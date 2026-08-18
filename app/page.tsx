@@ -234,10 +234,10 @@ export default function Home() {
       </header>
       <section className="hero">
         <video ref={heroFilmA} className="hero-film is-visible" autoPlay muted playsInline preload="auto" poster="/hero-film-still.png">
-          <source src="/hero-japan-train-web.mp4" type="video/mp4" />
+          <source src="/hero-japan-train-clean.mp4" type="video/mp4" />
         </video>
         <video ref={heroFilmB} className="hero-film hero-film-next" muted playsInline preload="auto" aria-hidden="true">
-          <source src="/hero-japan-train-web.mp4" type="video/mp4" />
+          <source src="/hero-japan-train-clean.mp4" type="video/mp4" />
         </video>
         <div className="hero-copy">
           <h1>
