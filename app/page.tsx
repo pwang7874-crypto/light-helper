@@ -336,11 +336,11 @@ export default function Home() {
                 </div>
                 <div className="exposure-controls">
                   <ExposureControl label="ISO" value={iso} setValue={setIso} options={[400, 800, 1250, 1600, 3200]} />
-                  <ExposureControl label="光圈 / T 值" value={aperture} setValue={setAperture} options={[1.4, 2, 2.8, 4, 5.6, 8]} optionLabel={(value) => `T${value}`} variant="iris" />
+                  <ExposureControl label="光圈 / T 值" value={aperture} setValue={setAperture} options={[1.4, 2, 2.8, 4, 5.6, 8]} optionLabel={(value) => `T${value}`} variant="iris" inputStep={0.1} />
                   <ExposureControl label="帧率" value={fps} setValue={setFps} options={[24, 25, 30, 48, 60]} optionLabel={(value) => `${value}fps`} />
                   <ExposureControl label="快门速度" value={shutterSpeed} setValue={setShutterSpeed} options={[24, 30, 48, 50, 60, 96, 100, 120, 240]} optionLabel={(value) => `1/${value}`} variant="shutter" />
-                  <ExposureControl label="ND 减光" value={nd} setValue={setNd} options={[0, 1, 2, 3, 4]} optionLabel={(value) => value === 0 ? "CLEAR" : `ND ${value}`} variant="nd" />
-                  <ExposureControl label="创意偏移" value={offset} setValue={setOffset} options={[-2, -1, -0.3, -0.2, 0, 0.2, 0.3, 1, 2]} optionLabel={(value) => `${value > 0 ? "+" : ""}${Number.isInteger(value) ? value : value.toFixed(1)} EV`} variant="offset" />
+                  <ExposureControl label="ND 减光" value={nd} setValue={setNd} options={[0, 1, 2, 3, 4]} optionLabel={(value) => value === 0 ? "CLEAR" : `ND ${value}`} variant="nd" inputStep={0.1} />
+                  <ExposureControl label="创意偏移" value={offset} setValue={setOffset} options={[-2, -1, -0.3, -0.2, 0, 0.2, 0.3, 1, 2]} optionLabel={(value) => `${value > 0 ? "+" : ""}${Number.isInteger(value) ? value : value.toFixed(1)} EV`} variant="offset" inputStep={0.1} />
                 </div>
                 <p className="exposure-caption">
                   <span>EXPOSURE MAP</span> ISO {iso} · T{aperture} · 1/{shutterSpeed}s · ND {nd === 0 ? "CLEAR" : nd} · {signedStop(camera.lookOffset + offset)}
@@ -472,7 +472,7 @@ export default function Home() {
                     hint={`环境对目标 ${signedStop(calc.ambientDelta)}`}
                   />
                 </div>
-                <div className="instruction">
+                <div className="instruction jade-flow">
                   <span>建议主光</span>
                   <h3>
                     {fixture?.brand} · {fixture?.model}
@@ -495,15 +495,6 @@ export default function Home() {
                       : "以入射式测光表在人物脸前复核；每次以 5% 微调。"}
                   </small>
                 </div>
-                <button
-                  className="apply"
-                  onClick={() => {
-                    setPower(Math.min(100, Math.round(calc.suggestedPower)));
-                    setNote(`${calc.lightSource}已参与计算；建议以人物位置的入射式测光表复核。`);
-                  }}
-                >
-                  应用建议功率
-                </button>
             </>
             <p className="calc-note">{note}</p>
             <details>
@@ -578,6 +569,7 @@ function ExposureControl({
   options,
   optionLabel = (item) => String(item),
   variant = "",
+  inputStep = 1,
 }: {
   label: string;
   value: number;
@@ -585,6 +577,7 @@ function ExposureControl({
   options: readonly number[];
   optionLabel?: (value: number) => string;
   variant?: string;
+  inputStep?: number;
 }) {
   return (
     <section className={`exposure-control ${variant}`}>
@@ -606,6 +599,24 @@ function ExposureControl({
           </button>
         ))}
       </div>
+      <label className="exposure-custom">
+        <span>精确输入</span>
+        <input
+          key={`${label}-${value}`}
+          type="number"
+          defaultValue={value}
+          step={inputStep}
+          inputMode="decimal"
+          aria-label={`${label}精确输入`}
+          onBlur={(event) => {
+            const next = Number(event.target.value);
+            if (Number.isFinite(next)) setValue(next);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") event.currentTarget.blur();
+          }}
+        />
+      </label>
     </section>
   );
 }
