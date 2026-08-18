@@ -84,6 +84,7 @@ export default function Home() {
   const [previousReading, setPreviousReading] = useState<PhotoReading | null>(null);
   const [currentReading, setCurrentReading] = useState<PhotoReading | null>(null);
   const [continuityStop, setContinuityStop] = useState(0);
+  const [showGuide, setShowGuide] = useState(false);
   const [note, setNote] = useState(
     "选择品牌与型号后，数据会按厂商标注的照度规格实时计算。",
   );
@@ -104,8 +105,25 @@ export default function Home() {
     } catch { setNote("这张照片无法读取，请换一张正常曝光、主体清楚的图片。"); }
   };
 
+  const removePhoto = (kind: "previous" | "current") => {
+    const url = kind === "previous" ? previousImage : currentImage;
+    if (url) URL.revokeObjectURL(url);
+    if (kind === "previous") { setPreviousImage(null); setPreviousReading(null); }
+    else { setCurrentImage(null); setCurrentReading(null); }
+    setContinuityStop(0);
+    setNote(`已移除${kind === "previous" ? "上一镜" : "现在现场"}照片；照片亮度修正已清除。`);
+  };
+
+  const closeGuide = () => {
+    setShowGuide(false);
+    window.localStorage.setItem("lighting-helper-guide-seen", "true");
+  };
+
   useEffect(() => setModel(models[0]?.model ?? ""), [brand, models]);
   useEffect(() => setMeterLux(null), [model]);
+  useEffect(() => {
+    if (!window.localStorage.getItem("lighting-helper-guide-seen")) setShowGuide(true);
+  }, []);
   useEffect(() => {
     const videos = [...document.querySelectorAll<HTMLVideoElement>(".hero-film")];
     if (videos.length === 0 || window.matchMedia("(prefers-reduced-motion: reduce)").matches)
@@ -231,7 +249,22 @@ export default function Home() {
           别穿帮<span>灯光助手</span>
         </div>
         <div className="topnote">PHOTOMETRIC CONTINUITY · v2</div>
+        <button className="guide-trigger" type="button" onClick={() => setShowGuide(true)}>使用说明</button>
       </header>
+      {showGuide && <div className="guide-backdrop" role="presentation" onMouseDown={closeGuide}>
+        <section className="guide-dialog" role="dialog" aria-modal="true" aria-labelledby="guide-title" onMouseDown={(event) => event.stopPropagation()}>
+          <button className="guide-close" type="button" aria-label="关闭操作手册" onClick={closeGuide}>×</button>
+          <span className="guide-kicker">FIRST LIGHT / 操作手册</span>
+          <h2 id="guide-title">三步，把这一镜的光接上。</h2>
+          <ol>
+            <li><b>先定相机与环境</b><span>选择机型、ISO、帧率、快门、光圈与 ND；数值可直接精确输入。</span></li>
+            <li><b>再选灯具与现场条件</b><span>按「品牌 → 型号」选择灯具，填写距离、柔光、色纸与灯具当前输出。</span></li>
+            <li><b>最后用照片对照</b><span>分别上传上一镜与现在现场，读取亮度差后点「应用为目标」，再依照建议主光复核。</span></li>
+          </ol>
+          <p>提示：建议百分比是现场起点；请用入射测光表在人物脸前做最后确认。</p>
+          <button className="guide-confirm" type="button" onClick={closeGuide}>开始调光</button>
+        </section>
+      </div>}
       <section className="hero">
         <video ref={heroFilmA} className="hero-film is-visible" autoPlay muted playsInline preload="auto" poster="/hero-film-still.png">
           <source src="/hero-japan-train-clean.mp4" type="video/mp4" />
@@ -329,14 +362,20 @@ export default function Home() {
             </Panel>
             <Panel title="上一镜 → 现在现场" hint="上传两张同机位照片，读取人物脸部与环境亮度">
               <div className="photo-compare">
-                <label className="photo-slot">
-                  <input type="file" accept="image/*" onChange={(event) => uploadPhoto(event, "previous")} />
-                  {previousImage ? <img src={previousImage} alt="上一镜照片" /> : <><b>＋ 上一镜照片</b><small>点击选择剧照</small></>}
-                </label>
-                <label className="photo-slot">
-                  <input type="file" accept="image/*" onChange={(event) => uploadPhoto(event, "current")} />
-                  {currentImage ? <img src={currentImage} alt="现在现场照片" /> : <><b>＋ 现在现场照片</b><small>点击选择现场图</small></>}
-                </label>
+                <div className="photo-slot">
+                  <input id="previous-photo" type="file" accept="image/*" onChange={(event) => uploadPhoto(event, "previous")} />
+                  <label htmlFor="previous-photo" className="photo-select">
+                    {previousImage ? <img src={previousImage} alt="上一镜照片" /> : <><b>＋ 上一镜照片</b><small>点击选择剧照</small></>}
+                  </label>
+                  {previousImage && <button className="remove-photo" type="button" onClick={() => removePhoto("previous")}>移除照片</button>}
+                </div>
+                <div className="photo-slot">
+                  <input id="current-photo" type="file" accept="image/*" onChange={(event) => uploadPhoto(event, "current")} />
+                  <label htmlFor="current-photo" className="photo-select">
+                    {currentImage ? <img src={currentImage} alt="现在现场照片" /> : <><b>＋ 现在现场照片</b><small>点击选择现场图</small></>}
+                  </label>
+                  {currentImage && <button className="remove-photo" type="button" onClick={() => removePhoto("current")}>移除照片</button>}
+                </div>
               </div>
               {previousReading && currentReading && photoDelta !== null && <div className="photo-result">
                 <span>上一镜：脸部 {previousReading.face} / 环境 {previousReading.environment} / {previousReading.kelvin}K</span>
