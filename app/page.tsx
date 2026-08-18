@@ -479,25 +479,26 @@ export default function Home() {
                 step={10}
               />
               <div className="control-grid">
-                <Select
+                <OptionRail
                   label="灯头数量"
                   value={count}
                   setValue={setCount}
                   options={[1, 2, 3, 4]}
+                  optionLabel={(value) => `${value} 盏`}
                 />
-                <Select
+                <OptionRail
                   label="柔光损失"
                   value={diffusion}
                   setValue={setDiffusion}
                   options={diffusionPresets.map((x) => x[1])}
-                  optionLabel={(x) => `${x} 档`}
+                  optionLabel={(value) => diffusionPresets.find((item) => item[1] === value)?.[0] ?? `${value} 档`}
                 />
-                <Select
+                <OptionRail
                   label="色纸损失"
                   value={gel}
                   setValue={setGel}
                   options={gelPresets.map((x) => x[1])}
-                  optionLabel={(x) => `${x} 档`}
+                  optionLabel={(value) => gelPresets.find((item) => item[1] === value)?.[0] ?? `${value} 档`}
                 />
               </div>
               <Range
@@ -629,7 +630,7 @@ function Panel({
     </section>
   );
 }
-function Select({
+function OptionRail({
   label,
   value,
   setValue,
@@ -645,16 +646,25 @@ function Select({
   optionLabel?: (value: number) => string;
 }) {
   return (
-    <label className="select-label">
-      {label}
-      <select value={value} onChange={(e) => setValue(Number(e.target.value))}>
+    <section className="option-rail" aria-label={label}>
+      <div className="option-rail-head">
+        <span>{label}</span>
+        <b>{optionLabel ? optionLabel(value) : `${value}${suffix}`}</b>
+      </div>
+      <div className="option-rail-options" role="group" aria-label={label}>
         {options.map((item) => (
-          <option key={item} value={item}>
+          <button
+            key={item}
+            type="button"
+            className={value === item ? "selected" : ""}
+            aria-pressed={value === item}
+            onClick={() => setValue(item)}
+          >
             {optionLabel ? optionLabel(item) : `${item}${suffix}`}
-          </option>
+          </button>
         ))}
-      </select>
-    </label>
+      </div>
+    </section>
   );
 }
 function ExposureControl({
