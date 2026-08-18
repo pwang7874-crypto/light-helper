@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { fixtures } from "./fixtures";
 
 const ambientPresets = [
@@ -48,6 +48,7 @@ const median = (values: number[]) => {
   const ordered = [...values].sort((a, b) => a - b);
   return ordered[Math.floor(ordered.length / 2)] ?? 0;
 };
+type PhotoReading = { face: number; environment: number; kelvin: number };
 
 export default function Home() {
   const brands = useMemo(
@@ -76,6 +77,11 @@ export default function Home() {
   const [diffusion, setDiffusion] = useState(1);
   const [gel, setGel] = useState(0);
   const [meterLux, setMeterLux] = useState<number | null>(null);
+  const [previousImage, setPreviousImage] = useState<string | null>(null);
+  const [currentImage, setCurrentImage] = useState<string | null>(null);
+  const [previousReading, setPreviousReading] = useState<PhotoReading | null>(null);
+  const [currentReading, setCurrentReading] = useState<PhotoReading | null>(null);
+  const [continuityStop, setContinuityStop] = useState(0);
   const [note, setNote] = useState(
     "选择品牌与型号后，数据会按厂商标注的照度规格实时计算。",
   );
@@ -83,6 +89,18 @@ export default function Home() {
     fixtures.find((item) => item.brand === brand && item.model === model) ??
     models[0];
   const camera = cameras.find((item) => item.id === cameraId) ?? cameras[0];
+  const photoDelta = previousReading && currentReading ? stop(previousReading.face, currentReading.face) : null;
+
+  const uploadPhoto = async (event: ChangeEvent<HTMLInputElement>, kind: "previous" | "current") => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const [reading, url] = await Promise.all([analyzePhoto(file), Promise.resolve(URL.createObjectURL(file))]);
+      if (kind === "previous") { setPreviousImage(url); setPreviousReading(reading); }
+      else { setCurrentImage(url); setCurrentReading(reading); }
+      setNote("照片只在当前设备浏览器内分析；脸部区域与画面周边分别用于亮度对照。");
+    } catch { setNote("这张照片无法读取，请换一张正常曝光、主体清楚的图片。"); }
+  };
 
   useEffect(() => setModel(models[0]?.model ?? ""), [brand, models]);
   useEffect(() => setMeterLux(null), [model]);
@@ -117,7 +135,7 @@ export default function Home() {
       (aperture / 2.8) ** 2 *
       (800 / iso) *
       (baseTime / exposureTime) *
-      2 ** (nd + camera.lookOffset + offset) *
+      2 ** (nd + camera.lookOffset + offset + continuityStop) *
       (0.18 / subject);
     const actualDistance = Math.sqrt(distance ** 2 + (height - 1.63) ** 2);
     const fullKey = referenceLux * count * 2 ** (-diffusion - gel) * ((fixture?.referenceM ?? 1) / actualDistance) ** 2;
@@ -157,6 +175,7 @@ export default function Home() {
     subject,
     aperture,
     camera.lookOffset,
+    continuityStop,
   ]);
 
   return (
@@ -265,6 +284,25 @@ export default function Home() {
                   )}
                 </div>
               )}
+            </Panel>
+            <Panel title="上一镜 → 现在现场" hint="上传两张同机位照片，读取人物脸部与环境亮度">
+              <div className="photo-compare">
+                <label className="photo-slot">
+                  <input type="file" accept="image/*" onChange={(event) => uploadPhoto(event, "previous")} />
+                  {previousImage ? <img src={previousImage} alt="上一镜照片" /> : <><b>＋ 上一镜照片</b><small>点击选择剧照</small></>}
+                </label>
+                <label className="photo-slot">
+                  <input type="file" accept="image/*" onChange={(event) => uploadPhoto(event, "current")} />
+                  {currentImage ? <img src={currentImage} alt="现在现场照片" /> : <><b>＋ 现在现场照片</b><small>点击选择现场图</small></>}
+                </label>
+              </div>
+              {previousReading && currentReading && photoDelta !== null && <div className="photo-result">
+                <span>上一镜：脸部 {previousReading.face} / 环境 {previousReading.environment} / {previousReading.kelvin}K</span>
+                <span>现在：脸部 {currentReading.face} / 环境 {currentReading.environment} / {currentReading.kelvin}K</span>
+                <b>当前脸部相对上一镜 {signedStop(-photoDelta)}</b>
+                <button type="button" className="preset active" onClick={() => { setContinuityStop(photoDelta); setNote(`已把上一镜到现在现场的 ${signedStop(photoDelta)} 亮度差计入本次照度目标。`); }}>把上一镜亮度应用为目标</button>
+                {continuityStop !== 0 && <button type="button" className="preset" onClick={() => setContinuityStop(0)}>清除照片修正</button>}
+              </div>}
             </Panel>
             <Panel
               title="相机曝光目标"
@@ -594,4 +632,32 @@ function Metric({
       <span>{hint}</span>
     </div>
   );
+}
+
+function analyzePhoto(file: File): Promise<PhotoReading> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const width = 180;
+      const height = Math.max(1, Math.round((image.height / image.width) * width));
+      const canvas = document.createElement("canvas");
+      canvas.width = width; canvas.height = height;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) return reject(new Error("canvas unavailable"));
+      context.drawImage(image, 0, 0, width, height);
+      const pixels = context.getImageData(0, 0, width, height).data;
+      let faceLuma = 0, faceCount = 0, envLuma = 0, envCount = 0, red = 0, blue = 0;
+      for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+        const index = (y * width + x) * 4;
+        const luminance = .2126 * pixels[index] + .7152 * pixels[index + 1] + .0722 * pixels[index + 2];
+        const isFaceZone = x > width * .31 && x < width * .69 && y > height * .18 && y < height * .7;
+        if (isFaceZone) { faceLuma += luminance; faceCount += 1; red += pixels[index]; blue += pixels[index + 2]; }
+        else { envLuma += luminance; envCount += 1; }
+      }
+      const kelvin = Math.round(Math.max(2800, Math.min(7500, 5600 + (1 - red / Math.max(1, blue)) * 3300)) / 100) * 100;
+      resolve({ face: Math.round(faceLuma / Math.max(1, faceCount) / 255 * 100), environment: Math.round(envLuma / Math.max(1, envCount) / 255 * 100), kelvin });
+    };
+    image.onerror = () => reject(new Error("image failed"));
+    image.src = URL.createObjectURL(file);
+  });
 }
