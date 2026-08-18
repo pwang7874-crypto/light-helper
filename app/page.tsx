@@ -125,6 +125,9 @@ export default function Home() {
     if (!window.localStorage.getItem("lighting-helper-guide-seen")) setShowGuide(true);
   }, []);
   useEffect(() => {
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+  }, []);
+  useEffect(() => {
     const videos = [...document.querySelectorAll<HTMLVideoElement>(".hero-film")];
     if (videos.length === 0 || window.matchMedia("(prefers-reduced-motion: reduce)").matches)
       return;
@@ -261,7 +264,7 @@ export default function Home() {
             <li><b>再选灯具与现场条件</b><span>按「品牌 → 型号」选择灯具，填写距离、柔光、色纸与灯具当前输出。</span></li>
             <li><b>最后用照片对照</b><span>分别上传上一镜与现在现场，读取亮度差后点「应用为目标」，再依照建议主光复核。</span></li>
           </ol>
-          <p>提示：建议百分比是现场起点；请用入射测光表在人物脸前做最后确认。</p>
+          <p>提示：建议百分比是现场起点；请用入射测光表在人物脸前做最后确认。手机上可从浏览器菜单选择「添加到主屏幕／安装 App」，以后可全屏打开。</p>
           <button className="guide-confirm" type="button" onClick={closeGuide}>开始调光</button>
         </section>
       </div>}
