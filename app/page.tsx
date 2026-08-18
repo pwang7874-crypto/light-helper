@@ -211,7 +211,7 @@ export default function Home() {
           playsInline
           poster="/hero-film-still.png"
         >
-          <source src="/hero-film-motion.mp4" type="video/mp4" />
+          <source src="/hero-forest-train.mp4" type="video/mp4" />
         </video>
         <div className="hero-copy">
           <h1>
