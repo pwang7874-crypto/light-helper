@@ -1,588 +1,110 @@
 "use client";
-import { ChangeEvent, useEffect, useMemo, useState } from "react";
 
-type Gear = {
-  id: string;
-  name: string;
-  category: string;
-  temp: [number, number];
-};
-const gear: Gear[] = [
-  ["ulanzi-vl49", "优篮子 VL49", "口袋补光灯", 2500, 9000],
-  ["ulanzi-vl120", "优篮子 VL120", "口袋补光灯", 2500, 9000],
-  ["ulanzi-vl81", "优篮子 VL81 RGB", "口袋 RGB 灯", 2500, 9000],
-  ["godox-led6r", "神牛 LED6R", "口袋 RGB 灯", 1800, 10000],
-  ["godox-sl60w", "神牛 SL60W", "常亮灯", 5600, 5600],
-  ["godox-sl150ii", "神牛 SL150II Bi", "双色温常亮灯", 2800, 6500],
-  ["godox-la200bi", "神牛 LA200Bi", "双色温常亮灯", 2800, 6500],
-  ["godox-m600bi", "神牛 KNOWLED M600Bi", "双色温大功率灯", 2800, 6500],
-  ["godox-mg1200bi", "神牛 KNOWLED MG1200Bi", "双色温大功率灯", 2800, 6500],
-  ["aputure-300x", "爱图仕 300x", "双色温常亮灯", 2700, 6500],
-  ["aputure-600c", "爱图仕 600c Pro", "全彩常亮灯", 2300, 10000],
-  ["aputure-1200d", "爱图仕 1200d Pro", "日光大功率灯", 5600, 5600],
-  ["amaran-60x", "Amaran 60x S", "双色温常亮灯", 2700, 6500],
-  ["amaran-200x", "Amaran 200x S", "双色温常亮灯", 2700, 6500],
-  ["amaran-300c", "Amaran 300c", "全彩常亮灯", 2500, 7500],
-  ["nanlite-forza60b", "南光 Forza 60B II", "双色温常亮灯", 2700, 6500],
-  ["nanlite-forza300b", "南光 Forza 300B II", "双色温常亮灯", 2700, 6500],
-  ["nanlite-fs300b", "南光 FS-300B", "双色温常亮灯", 2700, 6500],
-  ["nanlite-pavotube", "南光 PavoTube II 30X", "RGB 灯管", 2700, 12000],
-  ["nanlux-evoke", "Nanlux Evoke 1200B", "双色温大功率灯", 2700, 6500],
-  ["nanlux-dyno", "Nanlux Dyno 650C", "全彩面板灯", 2700, 20000],
-  ["zhiyun-g60", "智云 MOLUS G60", "双色温口袋灯", 2700, 6500],
-  ["zhiyun-x100", "智云 MOLUS X100", "双色温口袋灯", 2700, 6500],
-  ["zhiyun-g200", "智云 MOLUS G200", "双色温常亮灯", 2700, 6500],
-  ["smallrig-60b", "SmallRig RC 60B", "双色温口袋灯", 2700, 6500],
-  ["smallrig-220b", "SmallRig RC 220B Pro", "双色温常亮灯", 2700, 6500],
-  ["smallrig-350b", "SmallRig RC 350B", "双色温常亮灯", 2700, 6500],
-  ["arri-orbiter", "ARRI Orbiter", "全彩影视灯", 2000, 20000],
-  ["arri-skypanel", "ARRI SkyPanel S60-C", "全彩面板灯", 2800, 10000],
-  ["arri-m18", "ARRI M18 HMI", "日光大功率灯", 5600, 5600],
-  ["astera-titan", "Astera Titan Tube", "RGB 灯管", 1750, 20000],
-  ["astera-helios", "Astera Helios Tube", "RGB 灯管", 1750, 20000],
-  ["litepanels-astra", "Litepanels Astra 6X", "双色温面板灯", 3200, 5600],
-  ["litepanels-gemini", "Litepanels Gemini 1x1", "全彩面板灯", 2700, 10000],
-  ["cream-vortex4", "Creamsource Vortex4", "全彩硬光灯", 2200, 15000],
-  ["cream-vortex8", "Creamsource Vortex8", "全彩硬光灯", 2200, 15000],
-  ["kinoflo-diva", "Kino Flo Diva-Lite 21", "全彩面板灯", 2700, 6500],
-  ["kinoflo-freestyle", "Kino Flo FreeStyle 31", "全彩面板灯", 2700, 6500],
-  ["rotolight-titan", "Rotolight Titan X2", "全彩圆灯", 3000, 10000],
-  ["quasar-rainbow", "Quasar Science Rainbow 2", "RGB 灯管", 1750, 10000],
-  ["hobelite-avant", "Hobolite Avant", "双色温常亮灯", 2700, 6500],
-  ["falcon-rx18", "Falcon Eyes RX-18TDX", "双色温软布灯", 3000, 5600],
-  ["yongnuo-yn360", "永诺 YN360 III", "RGB 灯棒", 3200, 5500],
-  ["dedolight-dled7", "Dedolight DLED7", "双色温聚光灯", 2700, 6500],
-  ["other", "其他品牌 / 通用双色温 LED 灯", "手动匹配", 2700, 6500],
-].map(([id, name, category, min, max]) => ({
-  id: String(id),
-  name: String(name),
-  category: String(category),
-  temp: [Number(min), Number(max)] as [number, number],
-}));
-const scenes = ["室内窗边", "阴天外景", "晴天外景", "傍晚 / 日落", "夜景"];
-const brands = [
-  "全部",
-  "优篮子",
-  "神牛",
-  "爱图仕",
-  "Amaran",
-  "南光",
-  "Nanlux",
-  "智云",
-  "SmallRig",
-  "ARRI",
-  "Astera",
-  "Litepanels",
-  "Creamsource",
-  "Kino Flo",
-  "Rotolight",
-  "Quasar Science",
-  "Hobolite",
-  "Falcon Eyes",
-  "永诺",
-  "Dedolight",
-  "其他品牌",
-];
-const modelBrand = (name: string) =>
-  brands.find((brand) => brand !== "全部" && name.startsWith(brand)) ??
-  "其他品牌";
+import { useEffect, useMemo, useState } from "react";
+import { fixtures } from "./fixtures";
+
+const ambientPresets = [
+  ["黑棚 / 夜内", 10], ["昏暗室内", 75], ["普通室内", 250],
+  ["窗边日光", 750], ["阴天外景", 5000], ["晴天外景", 25000],
+] as const;
+const subjectPresets = [["18% 灰卡", .18], ["中等肤色", .23], ["浅肤色", .36], ["深肤色", .11], ["白色背景", .85], ["黑色织物", .04]] as const;
+const diffusionPresets = [["无柔光", 0], ["轻柔光", .5], ["Lee 216 白柔光", 1], ["网格布 / 重柔光", 2]] as const;
+const gelPresets = [["无色纸", 0], ["1/2 CTO", .5], ["Full CTO", 1], ["深色效果纸", 1.5]] as const;
+const stop = (value: number, target: number) => Math.log2(Math.max(value, .01) / Math.max(target, .01));
+const signedStop = (value: number) => `${value >= 0 ? "+" : ""}${value.toFixed(1)} 档`;
 
 export default function Home() {
-  const [selected, setSelected] = useState("godox-sl150ii"),
-    [brand, setBrand] = useState("全部"),
-    [refFace, setRefFace] = useState(68),
-    [nowFace, setNowFace] = useState(39),
-    [refEnv, setRefEnv] = useState(58),
-    [nowEnv, setNowEnv] = useState(42),
-    [look, setLook] = useState(5600),
-    [nowK, setNowK] = useState(6500),
-    [distance, setDistance] = useState(1.5),
-    [soft, setSoft] = useState(true),
-    [scene, setScene] = useState(0),
-    [status, setStatus] = useState(
-      "上传两张同机位照片，自动读取人物脸部和环境光。",
-    ),
-    [before, setBefore] = useState<string | null>(null),
-    [current, setCurrent] = useState<string | null>(null);
-  const lamp = gear.find((x) => x.id === selected) ?? gear[0];
+  const brands = useMemo(() => [...new Set(fixtures.map((item) => item.brand))], []);
+  const [brand, setBrand] = useState(brands[0]);
+  const models = useMemo(() => fixtures.filter((item) => item.brand === brand), [brand]);
+  const [model, setModel] = useState(models[0]?.model ?? "");
+  const [iso, setIso] = useState(800);
+  const [tStop, setTStop] = useState(2.8);
+  const [fps, setFps] = useState(24);
+  const [shutter, setShutter] = useState(180);
+  const [nd, setNd] = useState(0);
+  const [offset, setOffset] = useState(0);
+  const [subject, setSubject] = useState(.23);
+  const [ambient, setAmbient] = useState(250);
+  const [distance, setDistance] = useState(2);
+  const [height, setHeight] = useState(1.9);
+  const [power, setPower] = useState(50);
+  const [count, setCount] = useState(1);
+  const [diffusion, setDiffusion] = useState(1);
+  const [gel, setGel] = useState(0);
+  const [note, setNote] = useState("选择品牌与型号后，数据会按厂商标注的照度规格实时计算。");
+  const fixture = fixtures.find((item) => item.brand === brand && item.model === model) ?? models[0];
+
+  useEffect(() => setModel(models[0]?.model ?? ""), [brand, models]);
   useEffect(() => {
-    const film = document.querySelector<HTMLVideoElement>(".hero-film");
-    if (!film || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const video = document.querySelector<HTMLVideoElement>(".hero-film");
+    if (!video || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const drift = () => {
-      film.style.objectPosition = `${44 + Math.random() * 12}% ${45 + Math.random() * 10}%`;
-      film.style.transform = `scale(${1.035 + Math.random() * 0.035})`;
+      video.style.objectPosition = `${44 + Math.random() * 12}% ${45 + Math.random() * 10}%`;
+      video.style.transform = `scale(${1.035 + Math.random() * .035})`;
     };
-    drift();
-    const timer = window.setInterval(drift, 6800);
-    return () => window.clearInterval(timer);
+    drift(); const timer = window.setInterval(drift, 6800); return () => window.clearInterval(timer);
   }, []);
-  const result = useMemo(() => {
-    const factor = Math.pow(distance / 1.5, 2) * (soft ? 1.3 : 1);
-    const gap = Math.max(0, refFace - nowFace),
-      envGap = refEnv - nowEnv;
-    const level = Math.min(100, Math.max(1, Math.round(gap * 1.7 * factor)));
-    const envLevel = Math.min(
-      100,
-      Math.max(8, Math.round(Math.abs(envGap) * 1.25 * factor)),
-    );
-    const targetK =
-      Number.isFinite(look) && Number.isFinite(nowK)
-        ? look - (nowK - look) * 0.55
-        : 5600;
-    const k =
-      Math.round(
-        Math.max(lamp.temp[0], Math.min(lamp.temp[1], targetK)) / 100,
-      ) * 100;
-    return {
-      gap,
-      envGap,
-      level,
-      envLevel,
-      k,
-      limited: k === lamp.temp[0] || k === lamp.temp[1],
-    };
-  }, [refFace, nowFace, refEnv, nowEnv, look, nowK, distance, soft, lamp]);
-  const upload = async (
-    e: ChangeEvent<HTMLInputElement>,
-    kind: "before" | "current",
-  ) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setStatus("正在读取照片里的脸部和环境光…");
-    try {
-      const data = await analyzePhoto(file),
-        url = URL.createObjectURL(file);
-      if (kind === "before") {
-        setRefFace(data.face);
-        setRefEnv(data.environment);
-        setLook(data.kelvin);
-        setBefore(url);
-        setStatus("已读取上一镜的人脸和环境光。");
-      } else {
-        setNowFace(data.face);
-        setNowEnv(data.environment);
-        setNowK(data.kelvin);
-        setCurrent(url);
-        setStatus("已读取现在现场的人脸和环境光；右侧已更新调灯指令。");
-      }
-    } catch {
-      setStatus("这张照片无法读取，请换一张清楚、无滤镜的剧照。");
-    }
-  };
-  return (
-    <main>
-      <header className="topbar">
-        <div className="brand">
-          <span className="logo">●</span>别穿帮<span>灯光助手</span>
-        </div>
-        <div className="topnote">
-          Continuity lighting · 给学生和小剧组的现场调灯建议
-        </div>
-      </header>
-      <section className="hero">
-        <video
-          className="hero-film"
-          autoPlay
-          muted
-          loop
-          playsInline
-          poster="/hero-film-still.png"
-          aria-label="春日站台的电影感动态主视觉"
-        >
-          <source src="/hero-film-motion.mp4" type="video/mp4" />
-        </video>
-        <div className="hero-copy">
-          <p className="eyebrow">
-            <i />
-            CONTINUITY LIGHTING ASSISTANT
-          </p>
-          <h1>
-            把每一镜的光，
-            <br />
-            留在同一个故事里。
-          </h1>
-          <p>
-            对照上一镜与现在现场的脸部、环境明暗和色温，获得可以直接照着做的灯光指令。
-          </p>
-        </div>
-      </section>
-      <section className="app-shell">
-        <div className="steps">
-          <span className="active">
-            <b>01</b>上传照片
-          </span>
-          <i></i>
-          <span className="active">
-            <b>02</b>选灯
-          </span>
-          <i></i>
-          <span>
-            <b>03</b>得指令
-          </span>
-        </div>
-        <div className="content">
-          <section className="controls">
-            <div className="photo-box">
-              <div className="section-title">
-                <b>
-                  先上传两张照片 <em>推荐</em>
-                </b>
-                <small>自动读取脸部和环境光</small>
-              </div>
-              <p>
-                选同机位、同一构图的“上一镜”和“现在现场”照片。照片只在这台设备上分析，不会上传。
-              </p>
-              <div className="photo-grid">
-                <Photo
-                  title="上一镜照片"
-                  preview={before}
-                  onChange={(e) => upload(e, "before")}
-                />
-                <Photo
-                  title="现在现场照片"
-                  preview={current}
-                  onChange={(e) => upload(e, "current")}
-                />
-              </div>
-              <div className="photo-status">{status}</div>
-            </div>
-            <div className="section-title">
-              <b>你手上有什么灯？</b>
-              <small>选最接近的型号</small>
-            </div>
-            <div className="lamp-grid">
-              {gear.map((x) => (
-                <button
-                  type="button"
-                  key={x.id}
-                  className={selected === x.id ? "lamp selected" : "lamp"}
-                  onClick={() => setSelected(x.id)}
-                >
-                  <span>{x.category}</span>
-                  <strong>{x.name}</strong>
-                </button>
-              ))}
-            </div>
-            <div className="section-title lower">
-              <b>现场大概是什么情况？</b>
-            </div>
-            <div className="chips">
-              {scenes.map((x, i) => (
-                <button
-                  type="button"
-                  key={x}
-                  onClick={() => setScene(i)}
-                  className={scene === i ? "chip selected" : "chip"}
-                >
-                  {x}
-                </button>
-              ))}
-            </div>
-            <div className="sliders">
-              <Range
-                label="上一镜：人物脸有多亮？"
-                value={refFace}
-                setValue={setRefFace}
-              />
-              <Range
-                label="现在：人物脸有多亮？"
-                value={nowFace}
-                setValue={setNowFace}
-              />
-              <div className="environment-read">
-                <b>环境光对照</b>
-                <span>
-                  上一镜 <strong>{refEnv}</strong>　→　现场{" "}
-                  <strong>{nowEnv}</strong>
-                </span>
-              </div>
-              <div className="twocol">
-                <Number
-                  label="上一镜颜色"
-                  value={look}
-                  setValue={setLook}
-                  suffix="K"
-                  min={2800}
-                  max={6500}
-                  step={100}
-                />
-                <Number
-                  label="现在自然光颜色"
-                  value={nowK}
-                  setValue={setNowK}
-                  suffix="K"
-                  min={2800}
-                  max={7500}
-                  step={100}
-                />
-              </div>
-              <div className="twocol">
-                <Number
-                  label="灯离人多远"
-                  value={distance}
-                  setValue={setDistance}
-                  suffix="m"
-                  min={0.3}
-                  max={5}
-                  step={0.1}
-                />
-                <label className="toggle-label">
-                  是否加柔光箱
-                  <button
-                    type="button"
-                    onClick={() => setSoft(!soft)}
-                    className={soft ? "toggle on" : "toggle"}
-                  >
-                    <span />
-                  </button>
-                  <em>{soft ? "要加" : "不加"}</em>
-                </label>
-              </div>
-            </div>
-          </section>
-          <aside className="answer">
-            <div className="answer-head">
-              <span>现场调灯指令</span>
-              <b>可直接照着做</b>
-            </div>
-            <div className="instruction">
-              <div className="instruction-mark">主光</div>
-              <p>人物补光 · 请用</p>
-              <h2>{lamp.name}</h2>
-              <div className="answer-row">
-                <div>
-                  <small>亮度开到</small>
-                  <strong>
-                    {result.level}
-                    <sup>%</sup>
-                  </strong>
-                </div>
-                <div>
-                  <small>色温调到</small>
-                  <strong>
-                    {result.k}
-                    <sup>K</sup>
-                  </strong>
-                </div>
-              </div>
-              <div className="placement">
-                <span>摆放</span>
-                <b>
-                  {scene === 4 ? "人物斜前方 45°" : "人物较暗一侧的斜前方 45°"}
-                </b>
-                <p>
-                  距离人物约 <strong>{distance.toFixed(1)} 米</strong>
-                  {soft ? "，装上柔光箱" : "，先不用柔光箱"}。
-                </p>
-              </div>
-            </div>
-            <div className="environment-card">
-              <span>环境光补光</span>
-              {result.envGap > 4 ? (
-                <>
-                  <b>再用一盏灯照背景或墙面</b>
-                  <p>
-                    亮度约 <strong>{result.envLevel}%</strong>，色温{" "}
-                    <strong>{result.k}K</strong>
-                    。打向现场较暗的墙、窗帘或背景，别直接打人物。
-                  </p>
-                </>
-              ) : result.envGap < -4 ? (
-                <>
-                  <b>现场环境比上一镜亮</b>
-                  <p>先压暗窗边或关掉多余灯；不要用加亮人物主光来硬撑环境。</p>
-                </>
-              ) : (
-                <>
-                  <b>环境光已经接近</b>
-                  <p>保持环境灯不动，按人物补光指令调整即可。</p>
-                </>
-              )}
-            </div>
-            <div className="match">
-              <span className="dot" />
-              <div>
-                <b>
-                  {result.gap > 8 ? "人物能接上上一条" : "人物亮度已经接近"}
-                </b>
-                <p>
-                  {result.gap > 8
-                    ? "按上面设置打开灯，再用眼睛对照上一镜确认。"
-                    : "不必大幅补光，微调灯位就可以开拍。"}
-                </p>
-              </div>
-            </div>
-            {result.limited && (
-              <p className="warning">
-                这盏灯的色温范围有限，已给出最接近的设置；必要时加色纸微调。
-              </p>
-            )}
-            <button
-              type="button"
-              className="save"
-              onClick={() => alert("已保存这条灯光指令。")}
-            >
-              保存这一镜的设置
-            </button>
-            <p className="fineprint">
-              照片分析给出起始建议。打开灯后，对比人物脸和背景与上一镜是否一致，再以每次
-              5% 的幅度微调。
-            </p>
-          </aside>
-        </div>
-      </section>
-      <footer>
-        <span>别穿帮灯光助手</span> ·
-        先让每一镜看起来一样，再谈更复杂的灯光设计。
-      </footer>
-    </main>
-  );
-}
-function Photo({
-  title,
-  preview,
-  onChange,
-}: {
-  title: string;
-  preview: string | null;
-  onChange: (e: ChangeEvent<HTMLInputElement>) => void;
-}) {
-  return (
-    <label className="upload">
-      <input
-        aria-label={title}
-        type="file"
-        accept="image/*"
-        onChange={onChange}
-      />
-      {preview ? (
-        <img src={preview} alt={title} />
-      ) : (
-        <>
-          <span>＋</span>
-          <b>{title}</b>
-          <small>点此选图</small>
-        </>
-      )}
-    </label>
-  );
-}
-function Range({
-  label,
-  value,
-  setValue,
-}: {
-  label: string;
-  value: number;
-  setValue: (n: number) => void;
-}) {
-  return (
-    <label className="range-label">
-      {label}
-      <output>
-        {value}
-        <small>/ 100</small>
-      </output>
-      <input
-        aria-label={label}
-        type="range"
-        min="0"
-        max="100"
-        value={value}
-        onChange={(e) => setValue(+e.target.value)}
-      />
-      <span>
-        <i>偏暗</i>
-        <i>明亮</i>
-      </span>
-    </label>
-  );
-}
-function Number({
-  label,
-  value,
-  setValue,
-  suffix,
-  min,
-  max,
-  step,
-}: {
-  label: string;
-  value: number;
-  setValue: (n: number) => void;
-  suffix: string;
-  min: number;
-  max: number;
-  step: number;
-}) {
-  return (
-    <label className="number-label">
-      {label}
-      <div>
-        <input
-          aria-label={label}
-          type="number"
-          value={value}
-          min={min}
-          max={max}
-          step={step}
-          onChange={(e) => setValue(+e.target.value)}
-        />
-        <span>{suffix}</span>
+
+  const calc = useMemo(() => {
+    const exposureTime = shutter / (360 * fps);
+    const baseTime = 1 / 48;
+    // 800 lx is the 18% grey, ISO 800, T2.8, 24 fps / 180° calibrated baseline.
+    const required = 800 * (tStop / 2.8) ** 2 * (800 / iso) * (baseTime / exposureTime) * 2 ** (nd + offset) * (.18 / subject);
+    const actualDistance = Math.sqrt(distance ** 2 + (height - 1.63) ** 2);
+    const fullKey = fixture?.lux === null || !fixture ? null : fixture.lux * count * 2 ** (-diffusion - gel) * (fixture.referenceM / actualDistance) ** 2;
+    const key = fullKey === null ? null : fullKey * power / 100;
+    const total = key === null ? null : ambient + key;
+    const requiredKey = Math.max(0, required - ambient);
+    const suggestedPower = fullKey && fullKey > 0 ? Math.min(100, Math.max(0, requiredKey / fullKey * 100)) : null;
+    return { exposureTime, required, actualDistance, fullKey, key, total, requiredKey, suggestedPower,
+      subjectDelta: total === null ? null : stop(total, required), ambientDelta: stop(ambient, required), ratio: total === null ? null : stop(total, ambient) };
+  }, [ambient, count, diffusion, distance, fixture, fps, gel, height, iso, nd, offset, power, shutter, subject, tStop]);
+
+  return <main>
+    <header className="topbar"><div className="brand">别穿帮<span>灯光助手</span></div><div className="topnote">PHOTOMETRIC CONTINUITY · v2</div></header>
+    <section className="hero">
+      <video className="hero-film" autoPlay muted loop playsInline poster="/hero-film-still.png"><source src="/hero-film-motion.mp4" type="video/mp4" /></video>
+      <div className="hero-copy"><h1>让每一盏灯的数字，<br/>都接上上一镜的光。</h1></div>
+    </section>
+    <section className="calc-shell">
+      <div className="steps"><span className="active"><b>01</b>相机与环境</span><i/><span className="active"><b>02</b>品牌与型号</span><i/><span><b>03</b>现场指令</span></div>
+      <div className="calculator-grid">
+        <section className="inputs">
+          <Panel title="品牌 → 型号" hint="来自中国市场影视灯品牌数据库">
+            <div className="brand-list">{brands.map((item) => <button key={item} type="button" className={brand === item ? "brand-chip selected" : "brand-chip"} onClick={() => setBrand(item)}>{item}<small>{fixtures.filter((f) => f.brand === item).length}</small></button>)}</div>
+            <div className="model-list">{models.map((item) => <button key={item.model} type="button" className={model === item.model ? "model-card selected" : "model-card"} onClick={() => setModel(item.model)}><b>{item.model}</b><span>{item.form} · {item.kind}</span><em>{item.lux === null ? "需补测照度" : item.luxNote}</em></button>)}</div>
+            {fixture && <div className="fixture-meta"><span>{fixture.positioning}</span><b>{fixture.watts}W</b><span>{fixture.cct}</span><span>CRI {fixture.cri} · TLCI {fixture.tlci}</span><small>规格：{fixture.luxNote}；附件／反光罩不同会改变实际输出。</small></div>}
+          </Panel>
+          <Panel title="相机曝光目标" hint="用 T 值、快门、ND 和主体反射率推导所需照度">
+            <div className="control-grid"><Select label="ISO" value={iso} setValue={setIso} options={[400, 800, 1250, 1600, 3200]}/><Select label="T 值" value={tStop} setValue={setTStop} options={[1.4, 2, 2.8, 4, 5.6, 8]}/><Select label="帧率" value={fps} setValue={setFps} options={[24, 25, 30, 48, 60]}/><Select label="快门角度" value={shutter} setValue={setShutter} options={[90, 144, 180, 270, 360]} suffix="°"/><Select label="ND 减光" value={nd} setValue={setNd} options={[0, 1, 2, 3, 4]} suffix=" 档"/><Select label="创意偏移" value={offset} setValue={setOffset} options={[-2, -1, 0, 1, 2]} suffix=" 档"/></div>
+            <div className="preset-row"><b>主体反射率</b>{subjectPresets.map(([label, value]) => <button className={subject === value ? "preset active" : "preset"} onClick={() => setSubject(value)} key={label}>{label}</button>)}</div>
+          </Panel>
+          <Panel title="环境与灯具设置" hint="环境光会与主光相加；柔光、色纸按透光损耗折算">
+            <div className="preset-row"><b>环境照度</b>{ambientPresets.map(([label, value]) => <button className={ambient === value ? "preset active" : "preset"} onClick={() => setAmbient(value)} key={label}>{label}</button>)}</div>
+            <Range label="环境照度（lx）" value={ambient} setValue={setAmbient} min={0} max={30000} step={10}/>
+            <div className="control-grid"><Select label="灯头数量" value={count} setValue={setCount} options={[1,2,3,4]}/><Select label="柔光损失" value={diffusion} setValue={setDiffusion} options={diffusionPresets.map((x)=>x[1])} optionLabel={(x)=>`${x} 档`}/><Select label="色纸损失" value={gel} setValue={setGel} options={gelPresets.map((x)=>x[1])} optionLabel={(x)=>`${x} 档`}/></div>
+            <Range label="灯到人物水平距离（m）" value={distance} setValue={setDistance} min={.5} max={12} step={.1}/><Range label="灯高（m，人物眼高按 1.63m）" value={height} setValue={setHeight} min={1} max={6} step={.1}/><Range label="当前调光（%）" value={power} setValue={setPower} min={1} max={100} step={1}/>
+          </Panel>
+        </section>
+        <aside className="results">
+          <div className="result-kicker">LIVE PHOTOMETRY</div><h2>现场调灯指令</h2>
+          {fixture?.lux === null ? <div className="warning-card"><b>这款型号暂不能精算</b><p>数据表仅给出了流明或定性输出，没有可换算的照度与参考距离。仍可保留为器材档案；请用入射式测光表补录 lux 后再计算。</p></div> : <>
+            <div className="hero-metric"><small>所需人物照度</small><strong>{Math.round(calc.required).toLocaleString()}<sup> lx</sup></strong><span>ISO {iso} · T{tStop} · 1/{Math.round(1/calc.exposureTime)}s · 反射率 {Math.round(subject*100)}%</span></div>
+            <div className="metric-grid"><Metric label="主光实际输出" value={`${Math.round(calc.key ?? 0).toLocaleString()} lx`} hint={`${fixture?.luxNote} → 实际 ${calc.actualDistance.toFixed(2)}m`}/><Metric label="人物总照度" value={`${Math.round(calc.total ?? 0).toLocaleString()} lx`} hint={`环境 ${ambient.toLocaleString()} lx + 主光`}/><Metric label="人物对目标" value={signedStop(calc.subjectDelta ?? 0)} hint={(calc.subjectDelta ?? 0) >= -.1 && (calc.subjectDelta ?? 0) <= .1 ? "曝光对齐" : "建议继续微调"}/><Metric label="人物对环境" value={signedStop(calc.ratio ?? 0)} hint={`环境对目标 ${signedStop(calc.ambientDelta)}`}/></div>
+            <div className="instruction"><span>建议主光</span><h3>{fixture?.brand} · {fixture?.model}</h3><div className="power-line"><b>{calc.suggestedPower === null ? "—" : `${Math.round(calc.suggestedPower)}%`}</b><p>距离人物实际 <strong>{calc.actualDistance.toFixed(2)}m</strong><br/>柔光／色纸共损失 <strong>{(diffusion + gel).toFixed(1)} 档</strong></p></div><small>{calc.suggestedPower !== null && calc.suggestedPower > 100 ? "这盏灯在当前距离与附件下功率不足：靠近、减柔光、加灯或换更强型号。" : "以入射式测光表在人物脸前复核；每次以 5% 微调。"}</small></div>
+            <button className="apply" onClick={() => { if (calc.suggestedPower !== null) { setPower(Math.round(calc.suggestedPower)); setNote("已把当前灯的调光设为物理计算建议值；请以现场测光表复核。"); } }}>应用建议功率</button>
+          </>}
+          <p className="calc-note">{note}</p>
+          <details><summary>计算原理与使用边界</summary><p>目标照度以 ISO 800、T2.8、24fps/180°、18%灰卡下的 800 lx 为校准基线，随后按 ISO、T 值平方、曝光时间、ND／创意偏移与反射率换算。灯具输出使用资料表中的厂商照度与标注参考距离，叠加灯数、调光、柔光／色纸透光率，再用平方反比和三维距离计算。未提供可用 lux 规格的型号不会伪造精度。</p></details>
+        </aside>
       </div>
-    </label>
-  );
+    </section>
+    <footer>别穿帮灯光助手 · 数据源：中国市场影视灯品牌数据库（用户提供） · 方法参考 LightCalc 的公开光度学框架。</footer>
+  </main>;
 }
-function analyzePhoto(
-  file: File,
-): Promise<{ face: number; environment: number; kelvin: number }> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => {
-      const w = 160,
-        h = Math.max(1, Math.round((image.height / image.width) * w)),
-        canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      if (!ctx) return reject();
-      ctx.drawImage(image, 0, 0, w, h);
-      const d = ctx.getImageData(0, 0, w, h).data;
-      let ft = 0,
-        fc = 0,
-        et = 0,
-        ec = 0,
-        r = 0,
-        b = 0;
-      for (let y = 0; y < h; y++)
-        for (let x = 0; x < w; x++) {
-          const i = (y * w + x) * 4,
-            l = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2],
-            face = x > w * 0.31 && x < w * 0.69 && y > h * 0.18 && y < h * 0.7;
-          if (face) {
-            ft += l;
-            fc++;
-            r += d[i];
-            b += d[i + 2];
-          } else {
-            et += l;
-            ec++;
-          }
-        }
-      const kelvin =
-        Math.round(
-          Math.max(
-            2800,
-            Math.min(7500, 5600 + (1 - r / Math.max(1, b)) * 3300),
-          ) / 100,
-        ) * 100;
-      resolve({
-        face: Math.round((ft / fc / 255) * 100),
-        environment: Math.round((et / ec / 255) * 100),
-        kelvin,
-      });
-    };
-    image.onerror = reject;
-    image.src = URL.createObjectURL(file);
-  });
-}
+
+function Panel({ title, hint, children }: { title: string; hint: string; children: React.ReactNode }) { return <section className="panel"><div className="panel-head"><h2>{title}</h2><small>{hint}</small></div>{children}</section>; }
+function Select({ label, value, setValue, options, suffix = "", optionLabel }: { label: string; value: number; setValue: (value: number) => void; options: readonly number[]; suffix?: string; optionLabel?: (value: number) => string }) { return <label className="select-label">{label}<select value={value} onChange={(e) => setValue(Number(e.target.value))}>{options.map((item) => <option key={item} value={item}>{optionLabel ? optionLabel(item) : `${item}${suffix}`}</option>)}</select></label>; }
+function Range({ label, value, setValue, min, max, step }: { label: string; value: number; setValue: (value: number) => void; min: number; max: number; step: number }) { return <label className="range-label">{label}<output>{value}</output><input type="range" min={min} max={max} step={step} value={value} onChange={(e) => setValue(Number(e.target.value))}/></label>; }
+function Metric({ label, value, hint }: { label: string; value: string; hint: string }) { return <div className="metric"><small>{label}</small><b>{value}</b><span>{hint}</span></div>; }
