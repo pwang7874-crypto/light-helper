@@ -53,6 +53,8 @@ export default defineConfig(async () => {
       cloudflare({
         viteEnvironment: { name: "rsc", childEnvironments: ["ssr"] },
         config: localBindingConfig,
+        // The inspector is not needed for the local preview and is blocked here.
+        inspectorPort: false,
       }),
     ],
   };
