@@ -170,17 +170,28 @@ export default function Home() {
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     let frame = 0;
-    const followPointer = (event: PointerEvent) => {
+    const moveLight = (x: number, y: number) => {
       window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => {
-        document.documentElement.style.setProperty("--light-x", `${(event.clientX / window.innerWidth) * 100}%`);
-        document.documentElement.style.setProperty("--light-y", `${(event.clientY / window.innerHeight) * 100}%`);
+        document.documentElement.style.setProperty("--light-x", `${(x / window.innerWidth) * 100}%`);
+        document.documentElement.style.setProperty("--light-y", `${(y / window.innerHeight) * 100}%`);
       });
     };
+    const followPointer = (event: PointerEvent) => {
+      moveLight(event.clientX, event.clientY);
+    };
+    const followTouch = (event: TouchEvent) => {
+      const touch = event.touches[0] ?? event.changedTouches[0];
+      if (touch) moveLight(touch.clientX, touch.clientY);
+    };
     window.addEventListener("pointermove", followPointer, { passive: true });
+    window.addEventListener("touchstart", followTouch, { passive: true });
+    window.addEventListener("touchmove", followTouch, { passive: true });
     return () => {
       window.cancelAnimationFrame(frame);
       window.removeEventListener("pointermove", followPointer);
+      window.removeEventListener("touchstart", followTouch);
+      window.removeEventListener("touchmove", followTouch);
     };
   }, []);
 

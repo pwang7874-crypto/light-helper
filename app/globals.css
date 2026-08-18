@@ -1161,6 +1161,9 @@ body:has(main) .hero{background:#dfe7dc!important}.hero-film{filter:saturate(.68
 /* Keep the exposure board quiet: no clipped arcs or stray technical guide lines. */
 .exposure-control:after{display:none}.exposure-control{background:linear-gradient(135deg,#fbfaf7 0%,#fbfaf7 76%,#f3f5ee 100%)}.exposure-control.iris,.exposure-control.nd,.exposure-control.offset{background:linear-gradient(135deg,#fbfaf7 0%,#f7f8f3 100%)}
 
+/* On touch screens, the cursor glow becomes a soft, fingertip-led water ripple. */
+@media(hover:none){body:has(main){background-image:radial-gradient(300px circle at var(--light-x) var(--light-y),#d4e4c5bb 0%,#e4ecdcab 20%,#edf0e8 47%,transparent 72%),radial-gradient(520px circle at calc(var(--light-x) + 10%) calc(var(--light-y) + 6%),#b7cbb14a 0%,transparent 55%),linear-gradient(135deg,#f5f5f0 0%,#eaeee6 46%,#f3f4ef 100%)!important;transition:background-image .12s ease-out}.brand-chip,.preset,.model-card,.photo-slot{transition:transform .18s ease,background .22s ease,box-shadow .22s ease}.brand-chip:active,.preset:active,.model-card:active,.photo-slot:active{transform:scale(.975);box-shadow:0 0 0 5px #c8d8bd55}.photo-slot:active{background:#dce8d7}}
+
 /* Two plates overlap briefly at the turn, so the journey never snaps back to its first frame. */
 .hero-film{opacity:0;transition:opacity 1.08s ease-in-out,object-position 6.8s cubic-bezier(.35,0,.25,1),transform 6.8s cubic-bezier(.35,0,.25,1),filter .6s ease}.hero-film.is-visible{opacity:1}.hero-film-next{z-index:1}.hero-film-next.is-visible{z-index:2}body:has(main) .hero-copy,body:has(main) .hero:after{z-index:3}@media(prefers-reduced-motion:reduce){.hero-film{opacity:0!important}.hero-film:first-of-type{opacity:1!important}}
 
