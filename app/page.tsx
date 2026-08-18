@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { fixtures } from "./fixtures";
 
 const ambientPresets = [
@@ -51,6 +51,8 @@ const median = (values: number[]) => {
 type PhotoReading = { face: number; environment: number; kelvin: number };
 
 export default function Home() {
+  const heroFilmA = useRef<HTMLVideoElement>(null);
+  const heroFilmB = useRef<HTMLVideoElement>(null);
   const brands = useMemo(
     () => [...new Set(fixtures.map((item) => item.brand))],
     [],
@@ -105,16 +107,44 @@ export default function Home() {
   useEffect(() => setModel(models[0]?.model ?? ""), [brand, models]);
   useEffect(() => setMeterLux(null), [model]);
   useEffect(() => {
-    const video = document.querySelector<HTMLVideoElement>(".hero-film");
-    if (!video || window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+    const videos = [...document.querySelectorAll<HTMLVideoElement>(".hero-film")];
+    if (videos.length === 0 || window.matchMedia("(prefers-reduced-motion: reduce)").matches)
       return;
     const drift = () => {
-      video.style.objectPosition = `${44 + Math.random() * 12}% ${45 + Math.random() * 10}%`;
-      video.style.transform = `scale(${1.035 + Math.random() * 0.035})`;
+      videos.forEach((video) => {
+        video.style.objectPosition = `${44 + Math.random() * 12}% ${45 + Math.random() * 10}%`;
+        video.style.transform = `scale(${1.035 + Math.random() * 0.035})`;
+      });
     };
     drift();
     const timer = window.setInterval(drift, 6800);
     return () => window.clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    const films = [heroFilmA.current, heroFilmB.current];
+    if (films.some((film) => !film) || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const [firstFilm, secondFilm] = films as [HTMLVideoElement, HTMLVideoElement];
+    let active = firstFilm;
+    let standby = secondFilm;
+    let transitioning = false;
+    const crossfade = () => {
+      if (transitioning || !Number.isFinite(active.duration) || active.currentTime < active.duration - 1.15) return;
+      transitioning = true;
+      standby.currentTime = 0;
+      standby.play().catch(() => undefined);
+      standby.classList.add("is-visible");
+      window.setTimeout(() => {
+        active.pause();
+        active.currentTime = 0;
+        active.classList.remove("is-visible");
+        const previous = active;
+        active = standby;
+        standby = previous;
+        transitioning = false;
+      }, 1080);
+    };
+    const interval = window.setInterval(crossfade, 160);
+    return () => window.clearInterval(interval);
   }, []);
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
@@ -203,15 +233,11 @@ export default function Home() {
         <div className="topnote">PHOTOMETRIC CONTINUITY · v2</div>
       </header>
       <section className="hero">
-        <video
-          className="hero-film"
-          autoPlay
-          muted
-          loop
-          playsInline
-          poster="/hero-film-still.png"
-        >
-          <source src="/hero-forest-train.mp4" type="video/mp4" />
+        <video ref={heroFilmA} className="hero-film is-visible" autoPlay muted playsInline preload="auto" poster="/hero-film-still.png">
+          <source src="/hero-japan-train-web.mp4" type="video/mp4" />
+        </video>
+        <video ref={heroFilmB} className="hero-film hero-film-next" muted playsInline preload="auto" aria-hidden="true">
+          <source src="/hero-japan-train-web.mp4" type="video/mp4" />
         </video>
         <div className="hero-copy">
           <h1>
