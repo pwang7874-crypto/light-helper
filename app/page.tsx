@@ -116,6 +116,22 @@ export default function Home() {
     const timer = window.setInterval(drift, 6800);
     return () => window.clearInterval(timer);
   }, []);
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    let frame = 0;
+    const followPointer = (event: PointerEvent) => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        document.documentElement.style.setProperty("--light-x", `${(event.clientX / window.innerWidth) * 100}%`);
+        document.documentElement.style.setProperty("--light-y", `${(event.clientY / window.innerHeight) * 100}%`);
+      });
+    };
+    window.addEventListener("pointermove", followPointer, { passive: true });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("pointermove", followPointer);
+    };
+  }, []);
 
   const calc = useMemo(() => {
     const exposureTime = 1 / shutterSpeed;
