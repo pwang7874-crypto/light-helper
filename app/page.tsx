@@ -306,60 +306,45 @@ export default function Home() {
             </Panel>
             <Panel
               title="相机曝光目标"
-              hint="快门速度直接决定曝光时间；相机预设给出可编辑的创意偏移起点"
+              hint="像调镜头一样选择每一档；相机预设会给出可继续微调的起点"
             >
-              <label className="select-label camera-select">
-                相机 / Log 或 LUT 预设
-                <select
-                  value={cameraId}
-                  onChange={(event) => {
-                    const next = cameras.find((item) => item.id === event.target.value) ?? cameras[0];
-                    setCameraId(next.id); setIso(next.baseIso); setOffset(next.lookOffset);
-                  }}
-                >
-                  {cameras.map((item) => <option key={item.id} value={item.id}>{item.label} · 默认 {signedStop(item.lookOffset)}</option>)}
-                </select>
-              </label>
-              <div className="control-grid">
-                <Select
-                  label="ISO"
-                  value={iso}
-                  setValue={setIso}
-                  options={[400, 800, 1250, 1600, 3200]}
-                />
-                <Select
-                  label="光圈大小（T 值）"
-                  value={aperture}
-                  setValue={setAperture}
-                  options={[1.4, 2, 2.8, 4, 5.6, 8]}
-                />
-                <Select
-                  label="帧率"
-                  value={fps}
-                  setValue={setFps}
-                  options={[24, 25, 30, 48, 60]}
-                />
-                <Select
-                  label="快门速度"
-                  value={shutterSpeed}
-                  setValue={setShutterSpeed}
-                  options={[24, 30, 48, 50, 60, 96, 100, 120, 240]}
-                  optionLabel={(value) => `1/${value}s`}
-                />
-                <Select
-                  label="ND 减光"
-                  value={nd}
-                  setValue={setNd}
-                  options={[0, 1, 2, 3, 4]}
-                  suffix=" 档"
-                />
-                <Select
-                  label="创意偏移（相机预设后可调）"
-                  value={offset}
-                  setValue={setOffset}
-                  options={[-2, -1, 0, 1, 2]}
-                  suffix=" 档"
-                />
+              <div className="exposure-station">
+                <div className="camera-profile">
+                  <div>
+                    <span>CAMERA / LOG PROFILE</span>
+                    <b>选择你的机位</b>
+                  </div>
+                  <div className="camera-reel" role="group" aria-label="相机与 Log 或 LUT 预设">
+                    {cameras.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={cameraId === item.id ? "selected" : ""}
+                        aria-pressed={cameraId === item.id}
+                        onClick={() => {
+                          setCameraId(item.id);
+                          setIso(item.baseIso);
+                          setOffset(item.lookOffset);
+                        }}
+                      >
+                        <small>{item.label.split(" · ")[0]}</small>
+                        <strong>{item.label.split(" · ")[1] ?? "Custom"}</strong>
+                        <em>默认 {signedStop(item.lookOffset)}</em>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="exposure-controls">
+                  <ExposureControl label="ISO" value={iso} setValue={setIso} options={[400, 800, 1250, 1600, 3200]} />
+                  <ExposureControl label="光圈 / T 值" value={aperture} setValue={setAperture} options={[1.4, 2, 2.8, 4, 5.6, 8]} optionLabel={(value) => `T${value}`} variant="iris" />
+                  <ExposureControl label="帧率" value={fps} setValue={setFps} options={[24, 25, 30, 48, 60]} optionLabel={(value) => `${value}fps`} />
+                  <ExposureControl label="快门速度" value={shutterSpeed} setValue={setShutterSpeed} options={[24, 30, 48, 50, 60, 96, 100, 120, 240]} optionLabel={(value) => `1/${value}`} variant="shutter" />
+                  <ExposureControl label="ND 减光" value={nd} setValue={setNd} options={[0, 1, 2, 3, 4]} optionLabel={(value) => value === 0 ? "CLEAR" : `ND ${value}`} variant="nd" />
+                  <ExposureControl label="创意偏移" value={offset} setValue={setOffset} options={[-2, -1, -0.3, -0.2, 0, 0.2, 0.3, 1, 2]} optionLabel={(value) => `${value > 0 ? "+" : ""}${Number.isInteger(value) ? value : value.toFixed(1)} EV`} variant="offset" />
+                </div>
+                <p className="exposure-caption">
+                  <span>EXPOSURE MAP</span> ISO {iso} · T{aperture} · 1/{shutterSpeed}s · ND {nd === 0 ? "CLEAR" : nd} · {signedStop(camera.lookOffset + offset)}
+                </p>
               </div>
               <div className="preset-row">
                 <b>主体反射率</b>
@@ -584,6 +569,44 @@ function Select({
         ))}
       </select>
     </label>
+  );
+}
+function ExposureControl({
+  label,
+  value,
+  setValue,
+  options,
+  optionLabel = (item) => String(item),
+  variant = "",
+}: {
+  label: string;
+  value: number;
+  setValue: (value: number) => void;
+  options: readonly number[];
+  optionLabel?: (value: number) => string;
+  variant?: string;
+}) {
+  return (
+    <section className={`exposure-control ${variant}`}>
+      <div className="exposure-control-head">
+        <span>{label}</span>
+        <b>{optionLabel(value)}</b>
+      </div>
+      <div className="exposure-ticks" role="group" aria-label={label}>
+        {options.map((item) => (
+          <button
+            key={item}
+            type="button"
+            className={value === item ? "selected" : ""}
+            aria-pressed={value === item}
+            onClick={() => setValue(item)}
+          >
+            <i />
+            <span>{optionLabel(item)}</span>
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 function Range({
