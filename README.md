@@ -1,100 +1,126 @@
-# vinext-starter
+# 别穿帮 · 灯光助手 🎥💡
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+> 让每一盏灯的数字，都接上上一镜的光。
 
-## Prerequisites
+一个面向影视片场的**灯光接戏（Lighting Continuity）计算工具**：把相机参数、灯具规格、现场环境换算成一条条「建议主光百分比」指令，并用照片亮度对照帮你把「上一镜的光」精确接回「现在这一镜」。
 
-- Node.js `>=22.13.0`
+---
 
-## Quick Start
+## 这个工具解决什么问题
+
+拍电影最怕「穿帮」——同一个场景，上一镜和下一镜的光不一致，剪出来就露馅。灯光师（gaffer）需要反复用测光表核对：这台相机、这个光圈、这个距离，灯要开到多少功率才和上一镜一样亮？
+
+本工具把这件事做成了**实时计算器**：
+
+```text
+相机参数（ISO / T 值 / 快门 / ND / Log 预设）
++ 灯具规格（品牌型号 · 厂商照度 · 距离 · 柔光 · 色纸）
++ 现场环境（环境照度 · 上一镜 vs 现在）
+        ↓
+现场调灯指令（建议主光功率 % · 人物对目标差几档）
+```
+
+所有计算在浏览器本地完成，无需后端，片场没网也能用。
+
+---
+
+## 功能
+
+- **实时光度计算**：以 ISO 800 / T2.8 / 1/48s / 18% 灰卡下的 800 lx 为校准基线，按 ISO、光圈平方、快门、ND、Log 预设与反射率实时换算「所需人物照度」与「建议主光功率」
+- **中国市场影视灯数据库**：内置 **61 款灯具**，覆盖 **9 大品牌**（爱图仕 / amaran / 南光 / 神牛 / 金贝 / 智云 / 影器 / 永诺 / SWIT），含厂商照度、色温、CRI、TLCI、卡口、定位
+- **厂商实测照度优先**：有公开 lux 的型号直接用厂商规格；没有的按「同灯型 + 同功率段中位效率」估算，并支持用入射测光表录入 1m 实测 lux 覆盖校准
+- **相机 / Log 预设**：ARRI ALEXA 35 · LogC4、Sony VENICE 2 · S-Log3、RED V-RAPTOR · Log3G10、Canon C500 II · C-Log2、Blackmagic PYXIS · Film Gen 5 + 自定义机型
+- **照片亮度对照（接戏核心）**：上传「上一镜」和「现在现场」两张照片，浏览器本地分析人物脸部与环境亮度差，一键「把上一镜亮度应用为目标」
+- **精细曝光控制**：ISO / 光圈 / 帧率 / 快门 / ND / 创意偏移全部可精确输入
+- **现场条件建模**：环境照度、灯头数量、柔光损失、色纸损失、灯到人物距离、灯高（按眼高 1.63m 折算三维距离）
+- **移动端可安装**：PWA 支持，可从浏览器「添加到主屏幕」全屏打开；触摸可跟随光标光效
+- **首次使用引导**：三步操作手册弹窗
+
+---
+
+## 技术栈
+
+| 层 | 方案 |
+|---|---|
+| 框架 | [vinext](https://github.com/cloudflare/vinext)（Cloudflare 的 Next.js 式 RSC 框架） |
+| 运行时 | Cloudflare Workers |
+| UI | React 19 + TypeScript |
+| 样式 | Tailwind CSS 4 |
+| 数据 | Drizzle ORM + Cloudflare D1（可选，当前计算为纯前端本地） |
+| 构建 | Vite + @vitejs/plugin-rsc |
+
+> 照片分析、照度计算全部在浏览器本地完成（Canvas 读取像素亮度），**不上传任何照片**，隐私友好。
+
+---
+
+## 快速启动
+
+### 环境要求
+- Node.js `>= 22.13.0`
+
+### 步骤
 
 ```bash
 npm install
-npm run dev
-npm run build
+npm run dev      # 本地开发，默认 http://localhost:3002
+npm run build    # 生产构建
+npm run start    # 启动生产构建（--port 3002）
+npm test         # 构建并验证渲染骨架
 ```
 
-This starter does not use `wrangler.jsonc`.
+---
 
-## Included Shape
+## 项目结构
 
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-Signed-in visitors receive both `oai-authenticated-user-id` and `oai-authenticated-user-email`. Private Sites require every visitor to sign in; public Sites may also have anonymous visitors, for whom neither header is present.
-
-The user ID is stable for the same user on the same Site and different across Sites. Email and name are intended for display or contact purposes.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const userId = requestHeaders.get("oai-authenticated-user-id");
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```text
+app/
+├── page.tsx                  # 主界面（计算器 + 照片对照 + 曝光控制）
+├── fixtures.ts               # 61 款中国市场影视灯数据库
+├── verified-lighting-data.ts # 厂商官方实测照度（含出处 URL）
+├── chatgpt-auth.ts           # ChatGPT 登录辅助（可选）
+├── globals.css               # 全站样式（暗色影院质感）
+├── layout.tsx
+└── _sites-preview/           # 站点预览骨架
+db/
+├── schema.ts                 # Drizzle schema（当前留空）
+└── index.ts
+worker/index.ts               # Cloudflare Worker 入口 + 图片优化
+public/                       # 图标、PWA manifest、hero 视频、service worker
+tests/rendered-html.test.mjs  # 渲染骨架测试
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+---
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
+## 计算原理
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
+目标照度换算链（详见页面内「计算原理与使用边界」）：
 
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
+1. **校准基线**：ISO 800、T2.8、1/48s、18% 灰卡 → 800 lx
+2. **相机换算**：按 ISO、光圈平方、快门速度、ND、Log 预设偏移、主体反射率缩放
+3. **灯具输出**：厂商照度 × 灯数 × 调光% × 2^(−柔光−色纸) × (参考距离/实际三维距离)²（平方反比）
+4. **接戏修正**：照片亮度差作为「连续性偏移」计入目标
 
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
+---
 
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
+## 数据来源与边界
 
-## Useful Commands
+- 灯具数据提取自项目方提供的《中国市场影视灯品牌数据库.xlsx》
+- `verified-lighting-data.ts` 仅收录**厂商官方发布**的照度数据，并附来源链接（官网 / 官方 PDF 手册）
+- `lux` 为 `null` 的型号（仅标注流明或定性描述的）**不会被用于伪精度的计算**，而是走同类估算 + 可实测覆盖
+- 方法参考 LightCalc 的公开光度学框架
 
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
+> ⚠️ 计算结果为现场起点，**请以入射式测光表在人物脸前做最终确认**。
 
-## Learn More
+---
 
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+## 部署
+
+- 托管于 Cloudflare Workers / Sites
+- `.openai/hosting.json` 声明可选的 D1 / R2 绑定
+- 不使用 `wrangler.jsonc`，本地开发由 `vite.config.ts` 模拟绑定
+
+---
+
+## 许可
+
+本项目代码尚未声明许可证，请在使用 / 分发前联系项目所有者确认授权。
