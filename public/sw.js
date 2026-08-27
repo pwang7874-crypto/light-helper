@@ -1,4 +1,4 @@
-const CACHE = "lighting-helper-v1";
+const CACHE = "lighting-helper-v3.1";
 const CORE = ["/", "/manifest.webmanifest", "/app-icon.svg", "/favicon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -16,13 +16,26 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET" || new URL(request.url).origin !== self.location.origin) return;
+  if (request.mode === "navigate") {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) caches.open(CACHE).then((cache) => cache.put("/", response.clone()));
+          return response;
+        })
+        .catch(async () => (await caches.match(request)) || (await caches.match("/")) || Response.error()),
+    );
+    return;
+  }
   event.respondWith(
-    caches.match(request).then((cached) => {
-      const refreshed = fetch(request).then((response) => {
-        if (response.ok) caches.open(CACHE).then((cache) => cache.put(request, response.clone()));
+    fetch(request)
+      .then(async (response) => {
+        if (response.ok) {
+          const cache = await caches.open(CACHE);
+          await cache.put(request, response.clone());
+        }
         return response;
-      }).catch(() => cached);
-      return cached || refreshed;
-    }),
+      })
+      .catch(async () => (await caches.match(request)) || Response.error()),
   );
 });

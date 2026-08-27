@@ -1,160 +1,199 @@
 "use client";
 
-import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
-import { fixtures } from "./fixtures";
+import {
+  type ChangeEvent,
+  type Dispatch,
+  type SetStateAction,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  calculateLighting,
+  clamp,
+  type CalibrationPoint,
+  type CurveMode,
+  signedStop,
+} from "./lighting-core";
+import {
+  brands,
+  confidenceLabel,
+  fixtureProfiles,
+  type FixtureProfile,
+} from "./lighting-data";
+import {
+  analyzePhoto,
+  comparePhotos,
+  type FacePosition,
+  type PhotoReading,
+  validateImageFile,
+} from "./photo-analysis";
+import {
+  importShots,
+  loadShots,
+  newShotId,
+  removeShot,
+  saveShot,
+  type CalculatorSnapshot,
+  type SavedShot,
+} from "./shot-storage";
 
-const ambientPresets = [
-  ["黑棚 / 夜内", 10],
-  ["昏暗室内", 75],
-  ["普通室内", 250],
-  ["窗边日光", 750],
+const DEFAULT_FIXTURE =
+  fixtureProfiles.find((fixture) => fixture.model === "VL-120Bi") ??
+  fixtureProfiles[0];
+
+const ISO_OPTIONS = [400, 800, 1250, 1600, 3200];
+const APERTURE_OPTIONS = [1.4, 2, 2.8, 4, 5.6, 8];
+const FPS_OPTIONS = [24, 25, 30, 48, 50, 60];
+const SHUTTER_ANGLES = [90, 144, 172.8, 180, 270, 360];
+const AMBIENT_PRESETS = [
+  ["黑棚/夜内", 10],
+  ["昏暗室内", 50],
+  ["普通室内", 150],
+  ["窗边日光", 600],
   ["阴天外景", 5000],
-  ["晴天外景", 25000],
 ] as const;
-const subjectPresets = [
-  ["18% 灰卡", 0.18],
-  ["中等肤色", 0.23],
-  ["浅肤色", 0.36],
-  ["深肤色", 0.11],
-  ["白色背景", 0.85],
-  ["黑色织物", 0.04],
-] as const;
-const diffusionPresets = [
-  ["无柔光", 0],
+const MODIFIER_PRESETS = [
+  ["裸灯/标配反光罩", 0],
   ["轻柔光", 0.5],
-  ["Lee 216 白柔光", 1],
-  ["网格布 / 重柔光", 2],
+  ["普通柔光箱", 1],
+  ["双层柔光箱", 1.5],
+  ["大面积框布", 2],
 ] as const;
-const gelPresets = [
-  ["无色纸", 0],
-  ["1/2 CTO", 0.5],
-  ["Full CTO", 1],
-  ["深色效果纸", 1.5],
-] as const;
-const cameras = [
-  { id: "arri", label: "ARRI ALEXA 35 · LogC4", baseIso: 800, lookOffset: 0 },
-  { id: "sony", label: "Sony VENICE 2 · S-Log3", baseIso: 800, lookOffset: 0.3 },
-  { id: "red", label: "RED V-RAPTOR · Log3G10", baseIso: 800, lookOffset: 0.2 },
-  { id: "canon", label: "Canon C500 Mark II · C-Log2", baseIso: 800, lookOffset: 0.3 },
-  { id: "bmd", label: "Blackmagic PYXIS · Film Gen 5", baseIso: 800, lookOffset: -0.2 },
-  { id: "custom", label: "自定义机型 / LUT", baseIso: 800, lookOffset: 0 },
-] as const;
-const stop = (value: number, target: number) =>
-  Math.log2(Math.max(value, 0.01) / Math.max(target, 0.01));
-const signedStop = (value: number) =>
-  `${value >= 0 ? "+" : ""}${value.toFixed(1)} 档`;
-const numericWatts = (watts: string) => Number((watts.match(/[0-9]+/) ?? ["0"])[0]);
-const median = (values: number[]) => {
-  const ordered = [...values].sort((a, b) => a - b);
-  return ordered[Math.floor(ordered.length / 2)] ?? 0;
+
+type PhotoState = {
+  file: File | null;
+  preview: string | null;
+  reading: PhotoReading | null;
+  position: FacePosition;
+  status: "idle" | "analyzing" | "ready" | "error";
+  error: string;
 };
-type PhotoReading = { face: number; environment: number; kelvin: number };
+
+const emptyPhoto = (): PhotoState => ({
+  file: null,
+  preview: null,
+  reading: null,
+  position: "auto",
+  status: "idle",
+  error: "",
+});
+
+const formatPower = (value: number) => {
+  if (!Number.isFinite(value)) return "—";
+  if (value > 100) return ">100%";
+  if (value > 0 && value < 10) return `${Math.round(value * 10) / 10}%`;
+  return `${Math.round(value)}%`;
+};
+
+const calibrationKey = (fixtureId: string) =>
+  `lighting-helper-calibration-v3-${fixtureId}`;
+
+const readCalibration = (fixtureId: string): CalibrationPoint[] => {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed: unknown = JSON.parse(
+      window.localStorage.getItem(calibrationKey(fixtureId)) ?? "[]",
+    );
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (point): point is CalibrationPoint =>
+        Boolean(point) &&
+        typeof point.setting === "number" &&
+        typeof point.output === "number",
+    );
+  } catch {
+    return [];
+  }
+};
 
 export default function Home() {
-  const heroFilmA = useRef<HTMLVideoElement>(null);
-  const heroFilmB = useRef<HTMLVideoElement>(null);
-  const brands = useMemo(
-    () => [...new Set(fixtures.map((item) => item.brand))],
-    [],
-  );
-  const [brand, setBrand] = useState(brands[0]);
-  const models = useMemo(
-    () => fixtures.filter((item) => item.brand === brand),
-    [brand],
-  );
-  const [model, setModel] = useState(models[0]?.model ?? "");
-  const [cameraId, setCameraId] = useState("arri");
+  const [mode, setMode] = useState<"quick" | "pro">("quick");
+  const [brand, setBrand] = useState(DEFAULT_FIXTURE.brand);
+  const [fixtureId, setFixtureId] = useState(DEFAULT_FIXTURE.id);
+  const [search, setSearch] = useState("");
   const [iso, setIso] = useState(800);
   const [aperture, setAperture] = useState(2.8);
   const [fps, setFps] = useState(24);
-  const [shutterSpeed, setShutterSpeed] = useState(48);
-  const [nd, setNd] = useState(0);
-  const [offset, setOffset] = useState(0);
-  const [subject, setSubject] = useState(0.23);
-  const [ambient, setAmbient] = useState(250);
+  const [shutterAngle, setShutterAngle] = useState(180);
+  const [ndStops, setNdStops] = useState(0);
+  const [exposureCompensation, setExposureCompensation] = useState(0);
+  const [ambientLux, setAmbientLux] = useState(50);
+  const [ambientCct, setAmbientCct] = useState(5600);
+  const [targetCct, setTargetCct] = useState(5600);
   const [distance, setDistance] = useState(2);
-  const [height, setHeight] = useState(1.9);
-  const [power, setPower] = useState(50);
-  const [count, setCount] = useState(1);
-  const [diffusion, setDiffusion] = useState(1);
-  const [gel, setGel] = useState(0);
-  const [meterLux, setMeterLux] = useState<number | null>(null);
-  const [previousImage, setPreviousImage] = useState<string | null>(null);
-  const [currentImage, setCurrentImage] = useState<string | null>(null);
-  const [previousReading, setPreviousReading] = useState<PhotoReading | null>(null);
-  const [currentReading, setCurrentReading] = useState<PhotoReading | null>(null);
-  const [continuityStop, setContinuityStop] = useState(0);
-  const [showGuide, setShowGuide] = useState(false);
-  const [note, setNote] = useState(
-    "选择品牌与型号后，数据会按厂商标注的照度规格实时计算。",
+  const [lampHeight, setLampHeight] = useState(2);
+  const [lightCount, setLightCount] = useState(1);
+  const [modifierLoss, setModifierLoss] = useState(0.5);
+  const [currentPower, setCurrentPower] = useState(50);
+  const [curveMode, setCurveMode] = useState<CurveMode>(
+    DEFAULT_FIXTURE.linearCurveDocumented ? "linear" : "native",
   );
-  const fixture =
-    fixtures.find((item) => item.brand === brand && item.model === model) ??
-    models[0];
-  const camera = cameras.find((item) => item.id === cameraId) ?? cameras[0];
-  const photoDelta = previousReading && currentReading ? stop(previousReading.face, currentReading.face) : null;
+  const [calibration, setCalibration] = useState<CalibrationPoint[]>([]);
+  const [meterLux, setMeterLux] = useState<number | null>(null);
+  const [previousPhoto, setPreviousPhoto] = useState<PhotoState>(emptyPhoto);
+  const [currentPhoto, setCurrentPhoto] = useState<PhotoState>(emptyPhoto);
+  const [sameCameraConfirmed, setSameCameraConfirmed] = useState(false);
+  const [photoApplied, setPhotoApplied] = useState(false);
+  const [notice, setNotice] = useState(
+    "先选灯、距离和环境；有上一镜时再上传照片对齐。",
+  );
+  const [project, setProject] = useState("我的拍摄项目");
+  const [scene, setScene] = useState("1");
+  const [shot, setShot] = useState("1");
+  const [records, setRecords] = useState<SavedShot[]>([]);
+  const [recordsOpen, setRecordsOpen] = useState(false);
+  const heroFilmA = useRef<HTMLVideoElement>(null);
+  const heroFilmB = useRef<HTMLVideoElement>(null);
+  const previewUrls = useRef<{ previous: string | null; current: string | null }>({
+    previous: null,
+    current: null,
+  });
 
-  const uploadPhoto = async (event: ChangeEvent<HTMLInputElement>, kind: "previous" | "current") => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    try {
-      const [reading, url] = await Promise.all([analyzePhoto(file), Promise.resolve(URL.createObjectURL(file))]);
-      if (kind === "previous") { setPreviousImage(url); setPreviousReading(reading); }
-      else { setCurrentImage(url); setCurrentReading(reading); }
-      setNote("照片只在当前设备浏览器内分析；脸部区域与画面周边分别用于亮度对照。");
-    } catch { setNote("这张照片无法读取，请换一张正常曝光、主体清楚的图片。"); }
-  };
-
-  const removePhoto = (kind: "previous" | "current") => {
-    const url = kind === "previous" ? previousImage : currentImage;
-    if (url) URL.revokeObjectURL(url);
-    if (kind === "previous") { setPreviousImage(null); setPreviousReading(null); }
-    else { setCurrentImage(null); setCurrentReading(null); }
-    setContinuityStop(0);
-    setNote(`已移除${kind === "previous" ? "上一镜" : "现在现场"}照片；照片亮度修正已清除。`);
-  };
-
-  const closeGuide = () => {
-    setShowGuide(false);
-    window.localStorage.setItem("lighting-helper-guide-seen", "true");
-  };
-
-  useEffect(() => setModel(models[0]?.model ?? ""), [brand, models]);
-  useEffect(() => setMeterLux(null), [model]);
   useEffect(() => {
-    if (!window.localStorage.getItem("lighting-helper-guide-seen")) setShowGuide(true);
-  }, []);
-  useEffect(() => {
-    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => undefined);
-  }, []);
-  useEffect(() => {
-    const videos = [...document.querySelectorAll<HTMLVideoElement>(".hero-film")];
-    if (videos.length === 0 || window.matchMedia("(prefers-reduced-motion: reduce)").matches)
-      return;
-    const drift = () => {
-      videos.forEach((video) => {
-        video.style.objectPosition = `${44 + Math.random() * 12}% ${45 + Math.random() * 10}%`;
-        video.style.transform = `scale(${1.035 + Math.random() * 0.035})`;
-      });
+    if ("serviceWorker" in navigator) {
+      // Local builds change frequently. An older cache can pair new HTML with
+      // stale client code and leave the calculator visible but non-interactive.
+      if (["localhost", "127.0.0.1"].includes(window.location.hostname)) {
+        void navigator.serviceWorker
+          .getRegistrations()
+          .then((items) => Promise.all(items.map((item) => item.unregister())))
+          .then(() => caches.keys())
+          .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
+          .catch(() => undefined);
+      } else {
+        navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+      }
+    }
+    const urls = previewUrls.current;
+    return () => {
+      if (urls.previous) URL.revokeObjectURL(urls.previous);
+      if (urls.current) URL.revokeObjectURL(urls.current);
     };
-    drift();
-    const timer = window.setInterval(drift, 6800);
-    return () => window.clearInterval(timer);
   }, []);
+
   useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const films = [heroFilmA.current, heroFilmB.current];
-    if (films.some((film) => !film) || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (films.some((film) => !film)) return;
     const [firstFilm, secondFilm] = films as [HTMLVideoElement, HTMLVideoElement];
     let active = firstFilm;
     let standby = secondFilm;
     let transitioning = false;
+    let transitionTimer: number | undefined;
     const crossfade = () => {
-      if (transitioning || !Number.isFinite(active.duration) || active.currentTime < active.duration - 1.15) return;
+      if (
+        transitioning ||
+        !Number.isFinite(active.duration) ||
+        active.currentTime < active.duration - 1.15
+      )
+        return;
       transitioning = true;
       standby.currentTime = 0;
-      standby.play().catch(() => undefined);
+      void standby.play().catch(() => undefined);
       standby.classList.add("is-visible");
-      window.setTimeout(() => {
+      transitionTimer = window.setTimeout(() => {
         active.pause();
         active.currentTime = 0;
         active.classList.remove("is-visible");
@@ -165,21 +204,46 @@ export default function Home() {
       }, 1080);
     };
     const interval = window.setInterval(crossfade, 160);
-    return () => window.clearInterval(interval);
+    return () => {
+      window.clearInterval(interval);
+      if (transitionTimer) window.clearTimeout(transitionTimer);
+    };
   }, []);
+
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const films = [heroFilmA.current, heroFilmB.current].filter(
+      (film): film is HTMLVideoElement => Boolean(film),
+    );
+    const drift = () => {
+      films.forEach((film) => {
+        film.style.objectPosition = `${44 + Math.random() * 12}% ${45 + Math.random() * 10}%`;
+        film.style.transform = `scale(${1.035 + Math.random() * 0.035})`;
+      });
+    };
+    drift();
+    const timer = window.setInterval(drift, 6800);
+    return () => window.clearInterval(timer);
+  }, []);
+
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     let frame = 0;
     const moveLight = (x: number, y: number) => {
       window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => {
-        document.documentElement.style.setProperty("--light-x", `${(x / window.innerWidth) * 100}%`);
-        document.documentElement.style.setProperty("--light-y", `${(y / window.innerHeight) * 100}%`);
+        document.documentElement.style.setProperty(
+          "--light-x",
+          `${(x / window.innerWidth) * 100}%`,
+        );
+        document.documentElement.style.setProperty(
+          "--light-y",
+          `${(y / window.innerHeight) * 100}%`,
+        );
       });
     };
-    const followPointer = (event: PointerEvent) => {
+    const followPointer = (event: PointerEvent) =>
       moveLight(event.clientX, event.clientY);
-    };
     const followTouch = (event: TouchEvent) => {
       const touch = event.touches[0] ?? event.changedTouches[0];
       if (touch) moveLight(touch.clientX, touch.clientY);
@@ -195,608 +259,808 @@ export default function Home() {
     };
   }, []);
 
-  const calc = useMemo(() => {
-    const exposureTime = 1 / shutterSpeed;
-    const baseTime = 1 / 48;
-    const sameFormEfficiency = fixtures
-      .filter((item) => item.lux !== null && item.form === fixture?.form && numericWatts(item.watts) > 0)
-      .map((item) => item.lux! / numericWatts(item.watts));
-    const allEfficiency = fixtures
-      .filter((item) => item.lux !== null && numericWatts(item.watts) > 0)
-      .map((item) => item.lux! / numericWatts(item.watts));
-    const estimatedLux = Math.round((median(sameFormEfficiency) || median(allEfficiency)) * numericWatts(fixture?.watts ?? "0"));
-    const referenceLux = meterLux ?? fixture?.lux ?? estimatedLux;
-    const lightSource = meterLux ? "1m 实测校准" : fixture?.lux !== null ? "厂商照度规格" : "同类灯具功率—照度估算";
-    // 800 lx is the 18% grey, ISO 800, T2.8, 1/48s calibrated baseline.
-    const required =
-      800 *
-      (aperture / 2.8) ** 2 *
-      (800 / iso) *
-      (baseTime / exposureTime) *
-      2 ** (nd + camera.lookOffset + offset + continuityStop) *
-      (0.18 / subject);
-    const actualDistance = Math.sqrt(distance ** 2 + (height - 1.63) ** 2);
-    const fullKey = referenceLux * count * 2 ** (-diffusion - gel) * ((fixture?.referenceM ?? 1) / actualDistance) ** 2;
-    const key = (fullKey * power) / 100;
-    const total = ambient + key;
-    const requiredKey = Math.max(0, required - ambient);
-    const suggestedPower = fullKey > 0 ? Math.max(0, (requiredKey / fullKey) * 100) : 0;
-    return {
-      exposureTime,
-      required,
-      actualDistance,
-      fullKey,
-      key,
-      total,
-      requiredKey,
-      suggestedPower,
-      referenceLux,
-      lightSource,
-      subjectDelta: stop(total, required),
-      ambientDelta: stop(ambient, required),
-      ratio: stop(total, ambient),
+  useEffect(() => {
+    if (!recordsOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setRecordsOpen(false);
     };
-  }, [
-    ambient,
-    count,
-    diffusion,
-    distance,
-    fixture,
-    gel,
-    height,
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [recordsOpen]);
+
+  const fixture =
+    fixtureProfiles.find((item) => item.id === fixtureId) ?? DEFAULT_FIXTURE;
+
+  const visibleFixtures = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return fixtureProfiles.filter((item) => {
+      if (!query) return item.brand === brand;
+      return `${item.brand} ${item.model} ${item.form}`
+        .toLowerCase()
+        .includes(query);
+    });
+  }, [brand, search]);
+
+  const photoMatch = useMemo(() => {
+    if (!previousPhoto.reading || !currentPhoto.reading) return null;
+    return comparePhotos(previousPhoto.reading, currentPhoto.reading);
+  }, [previousPhoto.reading, currentPhoto.reading]);
+
+  const appliedPhoto =
+    photoApplied && sameCameraConfirmed && photoMatch ? photoMatch : null;
+  const calculation = useMemo(
+    () =>
+      calculateLighting({
+        fixture,
+        iso,
+        aperture,
+        fps,
+        shutterAngle,
+        ndStops,
+        exposureCompensationStops: exposureCompensation,
+        faceCorrectionStops: appliedPhoto?.faceCorrectionStops ?? 0,
+        environmentCorrectionStops:
+          appliedPhoto?.environmentCorrectionStops ?? 0,
+        ambientLux,
+        ambientCct: appliedPhoto?.currentCct ?? ambientCct,
+        targetCct: appliedPhoto?.targetCct ?? targetCct,
+        distance,
+        lampHeight,
+        subjectHeight: 1.63,
+        lightCount,
+        modifierLossStops: modifierLoss,
+        currentPower,
+        curveMode,
+        calibration,
+        meterLux,
+      }),
+    [
+      ambientCct,
+      ambientLux,
+      aperture,
+      appliedPhoto,
+      calibration,
+      currentPower,
+      curveMode,
+      distance,
+      exposureCompensation,
+      fixture,
+      fps,
+      iso,
+      lampHeight,
+      lightCount,
+      meterLux,
+      modifierLoss,
+      ndStops,
+      shutterAngle,
+      targetCct,
+    ],
+  );
+
+  const selectFixture = (next: FixtureProfile) => {
+    setFixtureId(next.id);
+    setBrand(next.brand);
+    setCurveMode(next.linearCurveDocumented ? "linear" : "native");
+    setCalibration(readCalibration(next.id));
+    setMeterLux(null);
+    setNotice(
+      next.dataConfidence === "official"
+        ? "已使用厂商官方照度资料。"
+        : "这款灯缺少完整官方光度数据，结果会同时显示估算范围。",
+    );
+  };
+
+  const selectBrand = (nextBrand: string) => {
+    setBrand(nextBrand);
+    setSearch("");
+    const first = fixtureProfiles.find((item) => item.brand === nextBrand);
+    if (first) selectFixture(first);
+  };
+
+  const updatePhoto = async (
+    kind: "previous" | "current",
+    file: File,
+    position: FacePosition,
+    createPreview: boolean,
+  ) => {
+    const validationError = validateImageFile(file);
+    const setter = kind === "previous" ? setPreviousPhoto : setCurrentPhoto;
+    if (validationError) {
+      setter((value) => ({ ...value, status: "error", error: validationError }));
+      return;
+    }
+    let preview =
+      kind === "previous" ? previousPhoto.preview : currentPhoto.preview;
+    if (createPreview) {
+      const oldUrl = previewUrls.current[kind];
+      if (oldUrl) URL.revokeObjectURL(oldUrl);
+      preview = URL.createObjectURL(file);
+      previewUrls.current[kind] = preview;
+    }
+    setter((value) => ({
+      ...value,
+      file,
+      preview,
+      position,
+      status: "analyzing",
+      error: "",
+    }));
+    try {
+      const reading = await analyzePhoto(file, position);
+      setter((value) => ({ ...value, reading, position, status: "ready" }));
+      setPhotoApplied(false);
+      setNotice("照片已在本机完成分析。确认拍摄条件后再应用连续性修正。");
+    } catch (error) {
+      setter((value) => ({
+        ...value,
+        status: "error",
+        error: error instanceof Error ? error.message : "照片分析失败。",
+      }));
+    }
+  };
+
+  const handlePhotoFile = (
+    kind: "previous" | "current",
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    void updatePhoto(kind, file, "auto", true);
+  };
+
+  const changeFacePosition = (
+    kind: "previous" | "current",
+    position: FacePosition,
+  ) => {
+    const state = kind === "previous" ? previousPhoto : currentPhoto;
+    const setter = kind === "previous" ? setPreviousPhoto : setCurrentPhoto;
+    setter((value) => ({ ...value, position }));
+    if (state.file) void updatePhoto(kind, state.file, position, false);
+  };
+
+  const removePhotoState = (kind: "previous" | "current") => {
+    const url = previewUrls.current[kind];
+    if (url) URL.revokeObjectURL(url);
+    previewUrls.current[kind] = null;
+    if (kind === "previous") setPreviousPhoto(emptyPhoto());
+    else setCurrentPhoto(emptyPhoto());
+    setPhotoApplied(false);
+    setSameCameraConfirmed(false);
+  };
+
+  const applyPhotoMatch = () => {
+    if (!photoMatch || !sameCameraConfirmed) return;
+    setPhotoApplied(true);
+    setNotice(
+      `已应用：人物 ${signedStop(photoMatch.faceCorrectionStops)}，环境 ${signedStop(photoMatch.environmentCorrectionStops)}。`,
+    );
+  };
+
+  const calibrationValue = (setting: number) =>
+    calibration.find((point) => point.setting === setting)?.output ?? "";
+
+  const setCalibrationValue = (setting: number, raw: string) => {
+    const output = Number(raw);
+    setCalibration((current) => {
+      const without = current.filter((point) => point.setting !== setting);
+      if (!raw || !Number.isFinite(output)) return without;
+      return [...without, { setting, output: clamp(output, 0.1, 99.9) }].sort(
+        (a, b) => a.setting - b.setting,
+      );
+    });
+  };
+
+  const persistCalibration = () => {
+    try {
+      window.localStorage.setItem(
+        calibrationKey(fixture.id),
+        JSON.stringify(calibration),
+      );
+      setCurveMode(calibration.length ? "calibrated" : "native");
+      setNotice(
+        calibration.length
+          ? "已把本机调光校准保存到当前设备。"
+          : "没有可保存的校准点。",
+      );
+    } catch {
+      setNotice("浏览器未允许本机存储，校准暂时无法保存。");
+    }
+  };
+
+  const snapshot = (): CalculatorSnapshot => ({
+    fixtureId: fixture.id,
     iso,
-    meterLux,
-    nd,
-    offset,
-    power,
-    shutterSpeed,
-    subject,
     aperture,
-    camera.lookOffset,
-    continuityStop,
-  ]);
+    fps,
+    shutterAngle,
+    ndStops,
+    exposureCompensationStops: exposureCompensation,
+    ambientLux,
+    ambientCct,
+    targetCct,
+    distance,
+    lampHeight,
+    lightCount,
+    modifierLossStops: modifierLoss,
+    currentPower,
+    curveMode,
+    meterLux,
+    photoApplied,
+    previousReading: previousPhoto.reading,
+    currentReading: currentPhoto.reading,
+  });
+
+  const saveCurrentShot = () => {
+    const now = new Date().toISOString();
+    const record: SavedShot = {
+      id: newShotId(),
+      version: 3,
+      project: project.trim() || "未命名项目",
+      scene: scene.trim() || "—",
+      shot: shot.trim() || "—",
+      createdAt: now,
+      updatedAt: now,
+      snapshot: snapshot(),
+      result: {
+        fixture: `${fixture.brand} · ${fixture.model}`,
+        power: calculation.suggestedPower,
+        powerLow: calculation.powerRange[0],
+        powerHigh: calculation.powerRange[1],
+        cct: calculation.cct.lampCct,
+        gel: calculation.cct.gel,
+        confidence: calculation.confidence,
+      },
+    };
+    try {
+      setRecords(saveShot(record));
+      setNotice(`已保存：${record.project} · ${record.scene}场 · ${record.shot}镜。`);
+    } catch {
+      setNotice("浏览器未允许本机存储，镜次记录没有保存。");
+    }
+  };
+
+  const resetCalculator = () => {
+    selectFixture(DEFAULT_FIXTURE);
+    setMode("quick");
+    setIso(800);
+    setAperture(2.8);
+    setFps(24);
+    setShutterAngle(180);
+    setNdStops(0);
+    setExposureCompensation(0);
+    setAmbientLux(50);
+    setAmbientCct(5600);
+    setTargetCct(5600);
+    setDistance(2);
+    setLampHeight(2);
+    setLightCount(1);
+    setModifierLoss(0.5);
+    setCurrentPower(50);
+    setMeterLux(null);
+    setPhotoApplied(false);
+    setNotice("已恢复常用片场参数；修改任一输入，结果会立即更新。");
+  };
+
+  const loadRecord = (record: SavedShot) => {
+    const data = record.snapshot;
+    const savedFixture = fixtureProfiles.find(
+      (item) => item.id === data.fixtureId,
+    );
+    if (savedFixture) selectFixture(savedFixture);
+    setProject(record.project);
+    setScene(record.scene);
+    setShot(record.shot);
+    setIso(data.iso);
+    setAperture(data.aperture);
+    setFps(data.fps);
+    setShutterAngle(data.shutterAngle);
+    setNdStops(data.ndStops);
+    setExposureCompensation(data.exposureCompensationStops);
+    setAmbientLux(data.ambientLux);
+    setAmbientCct(data.ambientCct);
+    setTargetCct(data.targetCct);
+    setDistance(data.distance);
+    setLampHeight(data.lampHeight);
+    setLightCount(data.lightCount);
+    setModifierLoss(data.modifierLossStops);
+    setCurrentPower(data.currentPower);
+    setCurveMode(data.curveMode);
+    setMeterLux(data.meterLux);
+    setPreviousPhoto({
+      ...emptyPhoto(),
+      reading: data.previousReading,
+      status: data.previousReading ? "ready" : "idle",
+    });
+    setCurrentPhoto({
+      ...emptyPhoto(),
+      reading: data.currentReading,
+      status: data.currentReading ? "ready" : "idle",
+    });
+    setSameCameraConfirmed(Boolean(data.previousReading && data.currentReading));
+    setPhotoApplied(data.photoApplied);
+    setRecordsOpen(false);
+    setNotice("已载入镜次记录；照片原图不保存，只恢复本机分析结果。");
+  };
+
+  const exportRecords = () => {
+    const data = loadShots();
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `别穿帮-镜次记录-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importRecords = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      setNotice("导入文件不能超过 2MB。");
+      return;
+    }
+    try {
+      setRecords(importShots(await file.text()));
+      setNotice("镜次记录导入成功。");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "导入失败。");
+    }
+  };
+
+  const environmentInstruction = (() => {
+    if (!appliedPhoto) return "未应用照片环境对照；使用现场环境照度输入。";
+    if (calculation.environmentFillLux > 5)
+      return `环境补光目标 ${Math.round(calculation.environmentTargetLux)} lx，需增加约 ${Math.round(calculation.environmentFillLux)} lx；若同款灯也在当前距离照环境，从 ${formatPower(calculation.environmentSuggestedPower)} 起调。`;
+    if (appliedPhoto.environmentCorrectionStops < -0.15)
+      return `现场环境比上一镜亮 ${Math.abs(appliedPhoto.environmentCorrectionStops).toFixed(1)} 档：优先控窗、减环境灯或调整机位。`;
+    return "现场环境与上一镜接近，无需额外补环境光。";
+  })();
+
+  const outputPower =
+    calculation.status === "ambient-too-bright"
+      ? "0%"
+      : formatPower(calculation.suggestedPower);
 
   return (
-    <main>
+    <main className="app">
       <header className="topbar">
-        <div className="brand">
-          别穿帮<span>灯光助手</span>
+        <a className="wordmark" href="#top" aria-label="回到页面顶部">
+          别穿帮 <span>灯光助手</span>
+        </a>
+        <div className="top-actions">
+          <span className="offline-badge">本机分析 · 照片不上传</span>
+          <button
+            type="button"
+            className="quiet-button"
+            onClick={() => {
+              setRecords(loadShots());
+              setRecordsOpen(true);
+            }}
+          >
+            镜次记录
+          </button>
         </div>
-        <div className="topnote">PHOTOMETRIC CONTINUITY · v2</div>
-        <button className="guide-trigger" type="button" onClick={() => setShowGuide(true)}>使用说明</button>
       </header>
-      {showGuide && <div className="guide-backdrop" role="presentation" onMouseDown={closeGuide}>
-        <section className="guide-dialog" role="dialog" aria-modal="true" aria-labelledby="guide-title" onMouseDown={(event) => event.stopPropagation()}>
-          <button className="guide-close" type="button" aria-label="关闭操作手册" onClick={closeGuide}>×</button>
-          <span className="guide-kicker">FIRST LIGHT / 操作手册</span>
-          <h2 id="guide-title">三步，把这一镜的光接上。</h2>
-          <ol>
-            <li><b>先定相机与环境</b><span>选择机型、ISO、帧率、快门、光圈与 ND；数值可直接精确输入。</span></li>
-            <li><b>再选灯具与现场条件</b><span>按「品牌 → 型号」选择灯具，填写距离、柔光、色纸与灯具当前输出。</span></li>
-            <li><b>最后用照片对照</b><span>分别上传上一镜与现在现场，读取亮度差后点「应用为目标」，再依照建议主光复核。</span></li>
-          </ol>
-          <p>提示：建议百分比是现场起点；请用入射测光表在人物脸前做最后确认。手机上可从浏览器菜单选择「添加到主屏幕／安装 App」，以后可全屏打开。</p>
-          <button className="guide-confirm" type="button" onClick={closeGuide}>开始调光</button>
-        </section>
-      </div>}
-      <section className="hero">
-        <video ref={heroFilmA} className="hero-film is-visible" autoPlay muted playsInline preload="auto" poster="/hero-film-still.png">
+
+      <section className="hero" id="top">
+        <video
+          ref={heroFilmA}
+          className="hero-film is-visible"
+          autoPlay
+          muted
+          playsInline
+          preload="auto"
+          poster="/hero-film-still.png"
+        >
           <source src="/hero-japan-train-clean.mp4" type="video/mp4" />
         </video>
-        <video ref={heroFilmB} className="hero-film hero-film-next" muted playsInline preload="auto" aria-hidden="true">
+        <video
+          ref={heroFilmB}
+          className="hero-film hero-film-next"
+          muted
+          playsInline
+          preload="auto"
+          aria-hidden="true"
+        >
           <source src="/hero-japan-train-clean.mp4" type="video/mp4" />
         </video>
         <div className="hero-copy">
-          <h1>
-            让每一盏灯的数字，
-            <br />
-            都接上上一镜的光。
-          </h1>
+          <span className="eyebrow">ON-SET LIGHT CONTINUITY · V3</span>
+          <h1><span>让每一盏灯的数字，</span><span>都接上上一镜的光。</span></h1>
+          <p>
+            对照上一镜和现在现场，直接得到灯具功率、色温与环境补光目标。
+          </p>
+          <div className="intro-stats" aria-label="灯具数据库统计">
+            <div><strong>{fixtureProfiles.length}</strong><span>款灯具</span></div>
+            <div><strong>{brands.length}</strong><span>个品牌</span></div>
+          </div>
         </div>
+        <a className="hero-scroll" href="#calculator">开始计算 <span>↓</span></a>
       </section>
-      <section className="calc-shell">
-        <div className="steps">
-          <span className="active">
-            <b>01</b>相机与环境
-          </span>
-          <i />
-          <span className="active">
-            <b>02</b>品牌与型号
-          </span>
-          <i />
-          <span>
-            <b>03</b>现场指令
-          </span>
-        </div>
-        <div className="calculator-grid">
-          <section className="inputs">
-            <Panel title="品牌 → 型号" hint="来自中国市场影视灯品牌数据库">
-              <div className="brand-list">
-                {brands.map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    className={
-                      brand === item ? "brand-chip selected" : "brand-chip"
-                    }
-                    onClick={() => setBrand(item)}
-                  >
-                    {item}
-                    <small>
-                      {fixtures.filter((f) => f.brand === item).length}
-                    </small>
-                  </button>
-                ))}
-              </div>
-              <div className="model-list">
-                {models.map((item) => (
-                  <button
-                    key={item.model}
-                    type="button"
-                    className={
-                      model === item.model
-                        ? "model-card selected"
-                        : "model-card"
-                    }
-                    onClick={() => setModel(item.model)}
-                  >
-                    <b>{item.model}</b>
-                    <span>
-                      {item.form} · {item.kind}
-                    </span>
-                    <em>{item.lux === null ? "自动估算 · 可用实测校准" : item.luxNote}</em>
-                  </button>
-                ))}
-              </div>
-              {fixture && (
-                <div className="fixture-meta">
-                  <span>{fixture.positioning}</span>
-                  <b>{fixture.watts}W</b>
-                  <span>{fixture.cct}</span>
-                  <span>
-                    CRI {fixture.cri} · TLCI {fixture.tlci}
-                  </span>
-                  <small>
-                    规格：{fixture.luxNote}；附件／反光罩不同会改变实际输出。
-                  </small>
-                  {fixture.lux === null && (
-                    <label className="meter-calibration">
-                      <span>这款没有公开 lux：系统先按同类功率—照度模型估算；如有入射测光表，可录入 1m 实测 lux 覆盖。</span>
-                      <input
-                        type="number"
-                        min="1"
-                        placeholder={`当前估算 ${calc.referenceLux.toLocaleString()} lx`}
-                        value={meterLux ?? ""}
-                        onChange={(event) => setMeterLux(event.target.value ? Number(event.target.value) : null)}
-                      />
-                    </label>
-                  )}
+
+      <section className="calc-shell" id="calculator">
+      <div className="steps" aria-label="计算流程">
+        <span className="active"><b>01</b>上一镜与现场</span><i />
+        <span className="active"><b>02</b>品牌与型号</span><i />
+        <span><b>03</b>现场最终指令</span>
+      </div>
+
+      <nav className="mode-switch" aria-label="使用模式">
+        <button
+          type="button"
+          className={mode === "quick" ? "active" : ""}
+          aria-pressed={mode === "quick"}
+          onClick={() => setMode("quick")}
+        >
+          快速模式
+          <small>学生与现场快速调灯</small>
+        </button>
+        <button
+          type="button"
+          className={mode === "pro" ? "active" : ""}
+          aria-pressed={mode === "pro"}
+          onClick={() => setMode("pro")}
+        >
+          专业模式
+          <small>完整曝光与校准参数</small>
+        </button>
+      </nav>
+
+      <div className="live-calculation-bar" role="status">
+        <span className="live-dot" aria-hidden="true" />
+        <b>即时计算已开启</b>
+        <p>修改灯具、距离、环境或曝光后，右侧功率与色温会立即更新。</p>
+        <button type="button" onClick={resetCalculator}>恢复常用参数</button>
+      </div>
+
+      <div className="workspace">
+        <div className="workflow">
+          <Panel
+            step="01"
+            title="上一镜和现在现场"
+            hint="照片只在当前设备分析，不会上传到服务器"
+          >
+            <div className="photo-grid">
+              <PhotoUploader
+                id="previous-photo"
+                title="上一镜"
+                state={previousPhoto}
+                onFile={(event) => handlePhotoFile("previous", event)}
+                onPosition={(value) => changeFacePosition("previous", value)}
+                onRemove={() => removePhotoState("previous")}
+              />
+              <PhotoUploader
+                id="current-photo"
+                title="现在现场"
+                state={currentPhoto}
+                onFile={(event) => handlePhotoFile("current", event)}
+                onPosition={(value) => changeFacePosition("current", value)}
+                onRemove={() => removePhotoState("current")}
+              />
+            </div>
+            {photoMatch && (
+              <div className="photo-match" aria-live="polite">
+                <div>
+                  <small>人物亮度修正</small>
+                  <strong>{signedStop(photoMatch.faceCorrectionStops)}</strong>
                 </div>
-              )}
-            </Panel>
-            <Panel title="上一镜 → 现在现场" hint="上传两张同机位照片，读取人物脸部与环境亮度">
-              <div className="photo-compare">
-                <div className="photo-slot">
-                  <input id="previous-photo" type="file" accept="image/*" onChange={(event) => uploadPhoto(event, "previous")} />
-                  <label htmlFor="previous-photo" className="photo-select">
-                    {previousImage ? <img src={previousImage} alt="上一镜照片" /> : <><b>＋ 上一镜照片</b><small>点击选择剧照</small></>}
-                  </label>
-                  {previousImage && <button className="remove-photo" type="button" onClick={() => removePhoto("previous")}>移除照片</button>}
+                <div>
+                  <small>环境亮度修正</small>
+                  <strong>{signedStop(photoMatch.environmentCorrectionStops)}</strong>
                 </div>
-                <div className="photo-slot">
-                  <input id="current-photo" type="file" accept="image/*" onChange={(event) => uploadPhoto(event, "current")} />
-                  <label htmlFor="current-photo" className="photo-select">
-                    {currentImage ? <img src={currentImage} alt="现在现场照片" /> : <><b>＋ 现在现场照片</b><small>点击选择现场图</small></>}
-                  </label>
-                  {currentImage && <button className="remove-photo" type="button" onClick={() => removePhoto("current")}>移除照片</button>}
+                <div>
+                  <small>图像色温变化</small>
+                  <strong>
+                    {photoMatch.kelvinShift >= 0 ? "+" : ""}
+                    {photoMatch.kelvinShift}K
+                  </strong>
                 </div>
-              </div>
-              {previousReading && currentReading && photoDelta !== null && <div className="photo-result">
-                <span>上一镜：脸部 {previousReading.face} / 环境 {previousReading.environment} / {previousReading.kelvin}K</span>
-                <span>现在：脸部 {currentReading.face} / 环境 {currentReading.environment} / {currentReading.kelvin}K</span>
-                <b>当前脸部相对上一镜 {signedStop(-photoDelta)}</b>
-                <button type="button" className="preset active" onClick={() => { setContinuityStop(photoDelta); setNote(`已把上一镜到现在现场的 ${signedStop(photoDelta)} 亮度差计入本次照度目标。`); }}>把上一镜亮度应用为目标</button>
-                {continuityStop !== 0 && <button type="button" className="preset" onClick={() => setContinuityStop(0)}>清除照片修正</button>}
-              </div>}
-            </Panel>
-            <Panel
-              title="相机曝光目标"
-              hint="像调镜头一样选择每一档；相机预设会给出可继续微调的起点"
-            >
-              <div className="exposure-station">
-                <div className="camera-profile">
-                  <div>
-                    <span>CAMERA / LOG PROFILE</span>
-                    <b>选择你的机位</b>
-                  </div>
-                  <div className="camera-reel" role="group" aria-label="相机与 Log 或 LUT 预设">
-                    {cameras.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        className={cameraId === item.id ? "selected" : ""}
-                        aria-pressed={cameraId === item.id}
-                        onClick={() => {
-                          setCameraId(item.id);
-                          setIso(item.baseIso);
-                          setOffset(item.lookOffset);
-                        }}
-                      >
-                        <small>{item.label.split(" · ")[0]}</small>
-                        <strong>{item.label.split(" · ")[1] ?? "Custom"}</strong>
-                        <em>默认 {signedStop(item.lookOffset)}</em>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="exposure-controls">
-                  <ExposureControl label="ISO" value={iso} setValue={setIso} options={[400, 800, 1250, 1600, 3200]} />
-                  <ExposureControl label="光圈 / T 值" value={aperture} setValue={setAperture} options={[1.4, 2, 2.8, 4, 5.6, 8]} optionLabel={(value) => `T${value}`} variant="iris" inputStep={0.1} />
-                  <ExposureControl label="帧率" value={fps} setValue={setFps} options={[24, 25, 30, 48, 60]} optionLabel={(value) => `${value}fps`} />
-                  <ExposureControl label="快门速度" value={shutterSpeed} setValue={setShutterSpeed} options={[24, 30, 48, 50, 60, 96, 100, 120, 240]} optionLabel={(value) => `1/${value}`} variant="shutter" />
-                  <ExposureControl label="ND 减光" value={nd} setValue={setNd} options={[0, 1, 2, 3, 4]} optionLabel={(value) => value === 0 ? "CLEAR" : `ND ${value}`} variant="nd" inputStep={0.1} />
-                  <ExposureControl label="创意偏移" value={offset} setValue={setOffset} options={[-2, -1, -0.3, -0.2, 0, 0.2, 0.3, 1, 2]} optionLabel={(value) => `${value > 0 ? "+" : ""}${Number.isInteger(value) ? value : value.toFixed(1)} EV`} variant="offset" inputStep={0.1} />
-                </div>
-                <p className="exposure-caption">
-                  <span>EXPOSURE MAP</span> ISO {iso} · T{aperture} · 1/{shutterSpeed}s · ND {nd === 0 ? "CLEAR" : nd} · {signedStop(camera.lookOffset + offset)}
+                <label className="confirm-row">
+                  <input
+                    type="checkbox"
+                    checked={sameCameraConfirmed}
+                    onChange={(event) => {
+                      setSameCameraConfirmed(event.target.checked);
+                      if (!event.target.checked) setPhotoApplied(false);
+                    }}
+                  />
+                  两张照片使用同一相机曝光，并锁定了白平衡
+                </label>
+                <button
+                  type="button"
+                  className="primary-button"
+                  disabled={!sameCameraConfirmed}
+                  onClick={applyPhotoMatch}
+                >
+                  {photoApplied ? "已应用照片连续性" : "应用到灯光计算"}
+                </button>
+                <p>
+                  图像色温只用于连续性起点；相机自动白平衡开启时不会作为精确色温表使用。
                 </p>
               </div>
-              <div className="preset-row">
-                <b>主体反射率</b>
-                {subjectPresets.map(([label, value]) => (
-                  <button
-                    className={subject === value ? "preset active" : "preset"}
-                    onClick={() => setSubject(value)}
-                    key={label}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </Panel>
-            <Panel
-              title="环境与灯具设置"
-              hint="环境光会与主光相加；柔光、色纸按透光损耗折算"
-            >
-              <div className="preset-row">
-                <b>环境照度</b>
-                {ambientPresets.map(([label, value]) => (
-                  <button
-                    className={ambient === value ? "preset active" : "preset"}
-                    onClick={() => setAmbient(value)}
-                    key={label}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <Range
-                label="环境照度（lx）"
-                value={ambient}
-                setValue={setAmbient}
-                min={0}
-                max={30000}
-                step={10}
+            )}
+          </Panel>
+
+          <Panel
+            step="02"
+            title="选择你手上的灯"
+            hint="官方资料优先；没有完整资料的型号会显示估算范围"
+          >
+            <label className="search-field">
+              <span>搜索品牌或型号</span>
+              <input
+                type="search"
+                value={search}
+                placeholder="例如：智云 X100、优篮子、神牛"
+                onChange={(event) => setSearch(event.target.value)}
               />
-              <div className="control-grid">
-                <OptionRail
-                  label="灯头数量"
-                  value={count}
-                  setValue={setCount}
-                  options={[1, 2, 3, 4]}
-                  optionLabel={(value) => `${value} 盏`}
-                />
-                <OptionRail
-                  label="柔光损失"
-                  value={diffusion}
-                  setValue={setDiffusion}
-                  options={diffusionPresets.map((x) => x[1])}
-                  optionLabel={(value) => diffusionPresets.find((item) => item[1] === value)?.[0] ?? `${value} 档`}
-                />
-                <OptionRail
-                  label="色纸损失"
-                  value={gel}
-                  setValue={setGel}
-                  options={gelPresets.map((x) => x[1])}
-                  optionLabel={(value) => gelPresets.find((item) => item[1] === value)?.[0] ?? `${value} 档`}
-                />
-              </div>
-              <Range
-                label="灯到人物水平距离（m）"
-                value={distance}
-                setValue={setDistance}
-                min={0.5}
-                max={12}
-                step={0.1}
-              />
-              <Range
-                label="灯高（m，人物眼高按 1.63m）"
-                value={height}
-                setValue={setHeight}
-                min={1}
-                max={6}
-                step={0.1}
-              />
-              <Range
-                label="当前调光（%）"
-                value={power}
-                setValue={setPower}
-                min={1}
-                max={100}
-                step={1}
-              />
-            </Panel>
-          </section>
-          <aside className="results">
-            <div className="result-kicker">LIVE PHOTOMETRY</div>
-            <h2>现场调灯指令</h2>
-            <>
-                <div className="hero-metric">
-                  <small>所需人物照度</small>
-                  <strong>
-                    {Math.round(calc.required).toLocaleString()}
-                    <sup> lx</sup>
-                  </strong>
-                  <span>
-                    {camera.label} · ISO {iso} · T{aperture} · 1/{shutterSpeed}s · {fps}fps · ND {nd} · 合计创意偏移 {signedStop(camera.lookOffset + offset)}
-                  </span>
-                </div>
-                <div className="metric-grid">
-                  <Metric
-                    label="主光实际输出"
-                    value={`${Math.round(calc.key).toLocaleString()} lx`}
-                    hint={`${calc.lightSource} ${calc.referenceLux.toLocaleString()} lx → 实际 ${calc.actualDistance.toFixed(2)}m`}
-                  />
-                  <Metric
-                    label="人物总照度"
-                    value={`${Math.round(calc.total).toLocaleString()} lx`}
-                    hint={`环境 ${ambient.toLocaleString()} lx + 主光`}
-                  />
-                  <Metric
-                    label="人物对目标"
-                    value={signedStop(calc.subjectDelta)}
-                    hint={
-                      calc.subjectDelta >= -0.1 &&
-                      calc.subjectDelta <= 0.1
-                        ? "曝光对齐"
-                        : "建议继续微调"
-                    }
-                  />
-                  <Metric
-                    label="人物对环境"
-                    value={signedStop(calc.ratio ?? 0)}
-                    hint={`环境对目标 ${signedStop(calc.ambientDelta)}`}
-                  />
-                </div>
-                <div className="instruction jade-flow">
-                  <span>建议主光</span>
-                  <h3>
-                    {fixture?.brand} · {fixture?.model}
-                  </h3>
-                  <div className="power-line">
-                    <b>
-                      {`${Math.round(calc.suggestedPower)}%`}
-                    </b>
-                    <p>
-                      距离人物实际{" "}
-                      <strong>{calc.actualDistance.toFixed(2)}m</strong>
-                      <br />
-                      柔光／色纸共损失{" "}
-                      <strong>{(diffusion + gel).toFixed(1)} 档</strong>
-                    </p>
-                  </div>
+            </label>
+            <div className="brand-list" aria-label="灯具品牌">
+              {brands.map((item) => (
+                <button
+                  type="button"
+                  key={item}
+                  className={!search && brand === item ? "active" : ""}
+                  aria-pressed={!search && brand === item}
+                  onClick={() => selectBrand(item)}
+                >
+                  {item}
                   <small>
-                    {calc.suggestedPower > 100
-                      ? "这盏灯在当前距离与附件下功率不足：靠近、减柔光、加灯或换更强型号。"
-                      : "以入射式测光表在人物脸前复核；每次以 5% 微调。"}
+                    {fixtureProfiles.filter((entry) => entry.brand === item).length}
                   </small>
+                </button>
+              ))}
+            </div>
+            <div className="model-grid">
+              {visibleFixtures.map((item) => (
+                <button
+                  type="button"
+                  key={item.id}
+                  className={fixture.id === item.id ? "model active" : "model"}
+                  aria-pressed={fixture.id === item.id}
+                  onClick={() => selectFixture(item)}
+                >
+                  <span className={`data-dot ${item.dataConfidence}`} />
+                  <strong>{item.model}</strong>
+                  <span>{item.form} · {item.kind}</span>
+                  <small>{item.dataLabel} · {item.luxNote}</small>
+                </button>
+              ))}
+              {!visibleFixtures.length && (
+                <p className="empty-state">没有找到这个型号，可以换品牌名或简写搜索。</p>
+              )}
+            </div>
+            <div className="fixture-card">
+              <div>
+                <span className={`confidence ${fixture.dataConfidence}`}>
+                  数据可信度 {confidenceLabel[fixture.dataConfidence]}
+                </span>
+                <h3>{fixture.brand} · {fixture.model}</h3>
+                <p>
+                  {fixture.watts}W · {fixture.cct}K · CRI {fixture.cri} · TLCI {fixture.tlci}
+                </p>
+              </div>
+              <div className="fixture-source">
+                <b>{fixture.referenceLux.toLocaleString()} lx</b>
+                <span>
+                  @ {fixture.referenceM}m · {fixture.testedModifier}
+                  {fixture.testedCct ? ` · ${fixture.testedCct}K` : ""}
+                </span>
+                {fixture.sourceUrl ? (
+                  <a href={fixture.sourceUrl} target="_blank" rel="noreferrer">
+                    查看厂商来源
+                  </a>
+                ) : (
+                  <em>项目灯具数据库，等待补充官方来源</em>
+                )}
+              </div>
+            </div>
+            {fixture.brand === "自定义灯具" && (
+              <div className="custom-fixture-input">
+                <NumberField
+                  label="这盏灯在1m、100%时的照度"
+                  value={meterLux ?? 0}
+                  setValue={(value) => setMeterLux(value > 0 ? value : null)}
+                  min={0}
+                  max={1000000}
+                  suffix="lx"
+                />
+                <p>没有测光表时可先用系统低可信估算；有厂商1m照度也可以直接填入。</p>
+              </div>
+            )}
+          </Panel>
+
+          <Panel
+            step="03"
+            title="现场距离与环境"
+            hint="日常档位优先；不需要先理解光度学公式"
+          >
+            <div className="quick-controls">
+              <RangeField label="灯到人物水平距离" value={distance} setValue={setDistance} min={0.5} max={12} step={0.1} suffix="m" />
+              <RangeField label="灯架高度" value={lampHeight} setValue={setLampHeight} min={1} max={6} step={0.1} suffix="m" />
+              <RangeField label="灯现在的档位" value={currentPower} setValue={setCurrentPower} min={0} max={100} step={1} suffix="%" />
+              <SelectField
+                label="柔光附件"
+                value={String(modifierLoss)}
+                onChange={(value) => setModifierLoss(Number(value))}
+                options={MODIFIER_PRESETS.map(([label, value]) => ({ label: `${label}（约损失 ${value} 档）`, value: String(value) }))}
+              />
+              <SelectField
+                label="相同灯具数量"
+                value={String(lightCount)}
+                onChange={(value) => setLightCount(Number(value))}
+                options={[1, 2, 3, 4].map((value) => ({ label: `${value} 盏`, value: String(value) }))}
+              />
+            </div>
+            <div className="preset-row" aria-label="环境照度预设">
+              {AMBIENT_PRESETS.map(([label, value]) => (
+                <button type="button" key={label} className={ambientLux === value ? "active" : ""} onClick={() => setAmbientLux(value)}>{label}</button>
+              ))}
+            </div>
+            <div className="quick-controls compact">
+              <NumberField label="现在环境照度" value={ambientLux} setValue={setAmbientLux} min={0} max={100000} suffix="lx" />
+              <NumberField label="现在环境色温" value={ambientCct} setValue={setAmbientCct} min={2000} max={12000} step={100} suffix="K" />
+              <NumberField label="要接回的目标色温" value={targetCct} setValue={setTargetCct} min={2000} max={12000} step={100} suffix="K" />
+            </div>
+          </Panel>
+
+          <Panel step="04" title="相机曝光" hint={mode === "quick" ? "快速模式使用常见电影机默认值" : "专业模式可逐项校准"}>
+            {mode === "quick" ? (
+              <div className="camera-summary">
+                <span>ISO {iso}</span><span>T{aperture}</span><span>{fps}fps</span><span>{shutterAngle}°快门</span>
+                <button type="button" onClick={() => setMode("pro")}>修改专业参数</button>
+              </div>
+            ) : (
+              <div className="pro-controls">
+                <ChipField label="ISO" value={iso} setValue={setIso} options={ISO_OPTIONS} />
+                <ChipField label="光圈 / T值" value={aperture} setValue={setAperture} options={APERTURE_OPTIONS} format={(value) => `T${value}`} />
+                <ChipField label="帧率" value={fps} setValue={setFps} options={FPS_OPTIONS} format={(value) => `${value}fps`} />
+                <ChipField label="快门角度" value={shutterAngle} setValue={setShutterAngle} options={SHUTTER_ANGLES} format={(value) => `${value}°`} />
+                <NumberField label="ND减光" value={ndStops} setValue={setNdStops} min={0} max={10} step={0.1} suffix="档" />
+                <NumberField label="创意曝光偏移" value={exposureCompensation} setValue={setExposureCompensation} min={-4} max={4} step={0.1} suffix="档" />
+                <NumberField label="当前灯具功率" value={currentPower} setValue={setCurrentPower} min={0} max={100} step={1} suffix="%" />
+                <NumberField label="1m实测校准（可选）" value={meterLux ?? 0} setValue={(value) => setMeterLux(value > 0 ? value : null)} min={0} max={1000000} suffix="lx" />
+              </div>
+            )}
+            <div className="curve-panel">
+              <div><b>灯具调光曲线</b><p>不同型号的1%—100%并不完全相同。最稳妥的方法是把支持的灯设为 Linear，或录入本机校准点。</p></div>
+              <SelectField
+                label="当前曲线"
+                value={curveMode}
+                onChange={(value) => setCurveMode(value as CurveMode)}
+                options={[
+                  { label: fixture.linearCurveDocumented ? "灯内 Linear（厂商文档支持，推荐）" : "灯内 Linear（请先确认灯具菜单）", value: "linear" },
+                  { label: "原厂默认/未知（显示范围）", value: "native" },
+                  { label: "本机实测校准", value: "calibrated" },
+                ]}
+              />
+              <details className="calibration-panel">
+                <summary>录入可选的本机调光校准</summary>
+                <p>填写该档位实测亮度占100%亮度的比例；没有测光条件可以不填。</p>
+                <div className="calibration-grid">
+                  {[25, 50, 75].map((setting) => (
+                    <label key={setting}>
+                      <span>{setting}%档位实测输出</span>
+                      <input type="number" min="0.1" max="99.9" step="0.1" placeholder={`${setting}`} value={calibrationValue(setting)} onChange={(event) => setCalibrationValue(setting, event.target.value)} />
+                      <em>%</em>
+                    </label>
+                  ))}
                 </div>
-            </>
-            <p className="calc-note">{note}</p>
-            <details>
-              <summary>计算原理与使用边界</summary>
-              <p>
-                目标照度以 ISO 800、T2.8、1/48s、18%灰卡下的 800 lx
-                为校准基线，随后按 ISO、光圈平方、快门速度、ND、相机预设／创意偏移与反射率换算。灯具输出优先采用资料表的厂商照度与参考距离；没有 lux 的型号则以同灯型、同功率段的中位照度效率估算，并可用 1m 实测 lux 覆盖校准。之后叠加灯数、调光、柔光／色纸透光率，再用平方反比和三维距离计算。
-              </p>
-            </details>
-          </aside>
+                <button type="button" className="secondary-button" onClick={persistCalibration}>保存当前灯具校准</button>
+              </details>
+            </div>
+          </Panel>
+
+          <Panel step="05" title="保存镜次" hint="记录保存在当前电脑，可导出备份">
+            <div className="shot-fields">
+              <label><span>项目</span><input value={project} onChange={(event) => setProject(event.target.value)} /></label>
+              <label><span>场次</span><input value={scene} onChange={(event) => setScene(event.target.value)} /></label>
+              <label><span>镜号</span><input value={shot} onChange={(event) => setShot(event.target.value)} /></label>
+              <button type="button" className="primary-button" onClick={saveCurrentShot}>保存当前灯光设置</button>
+            </div>
+          </Panel>
         </div>
+
+        <aside className="result-panel" aria-live="polite">
+          <div className="result-head"><span>现场最终指令</span><b className={`confidence ${fixture.dataConfidence}`}>可信度 {calculation.confidence}</b></div>
+          <h2>{fixture.brand}</h2>
+          <h3>{fixture.model}</h3>
+          <div className="primary-readouts">
+            <div><small>灯具功率</small><strong className="readout-value" key={`power-${outputPower}`}>{outputPower}</strong>{calculation.status === "ready" && <span>建议范围 {formatPower(calculation.powerRange[0])}—{formatPower(calculation.powerRange[1])}</span>}</div>
+            <div><small>灯具色温</small><strong className="readout-value" key={`cct-${calculation.cct.lampCct}`}>{calculation.cct.lampCct}K</strong><span>{calculation.cct.gel === "无色纸" ? "无需校色色纸" : `加 ${calculation.cct.gel}`}</span></div>
+          </div>
+          <div className={`status-card ${calculation.status}`}>
+            {calculation.status === "underpowered" && <><b>当前灯具功率不足</b><p>靠近人物、减柔光、加灯，或选择更高输出的型号。</p></>}
+            {calculation.status === "ambient-too-bright" && <><b>环境光已经超过人物曝光目标</b><p>主光应关闭；优先控窗、加ND、收光圈或降低环境灯。</p></>}
+            {calculation.status === "ready" && <><b>可以执行</b><p>先按上方档位设置，再在人物脸前用入射式测光表复核。</p></>}
+          </div>
+          <dl className="result-details">
+            <div><dt>人物目标照度</dt><dd>{Math.round(calculation.requiredLux)} lx</dd></div>
+            <div><dt>主光需要贡献</dt><dd>{Math.round(calculation.requiredKeyLux)} lx</dd></div>
+            <div><dt>实际斜距</dt><dd>{calculation.actualDistance.toFixed(2)} m</dd></div>
+            <div><dt>快门速度</dt><dd>1/{Math.round(calculation.shutterSpeed)}s</dd></div>
+            <div><dt>当前人物偏差</dt><dd>{signedStop(calculation.subjectDeltaStops)}</dd></div>
+            <div><dt>主光/环境</dt><dd>{calculation.keyToAmbientStops === null ? "无环境光" : signedStop(calculation.keyToAmbientStops)}</dd></div>
+          </dl>
+          <div className="environment-callout"><small>环境光连续性</small><p>{environmentInstruction}</p></div>
+          <div className="result-note"><p>{calculation.cct.note}</p><p>{calculation.confidenceReason}</p><p>{notice}</p></div>
+          <details className="method-note"><summary>计算口径与边界</summary><p>人物目标照度使用入射测光公式和标准球形测光头常数 C=340；距离按灯高和水平距离计算斜距。官方照度、测试色温和附件会一起参与计算。没有完整调光曲线时仍给出明确起始档位，同时显示可执行范围，避免伪精确。</p></details>
+        </aside>
+      </div>
       </section>
-      <footer>
-        别穿帮灯光助手 · 数据源：中国市场影视灯品牌数据库（用户提供） · 方法参考
-        LightCalc 的公开光度学框架。
-      </footer>
+
+      <footer>别穿帮灯光助手 V3 · 本机照片分析 · 官方数据优先 · 片场最终仍以测光表复核</footer>
+
+      {recordsOpen && (
+        <div className="dialog-layer">
+          <section className="records-dialog" role="dialog" aria-modal="true" aria-labelledby="records-title">
+            <div className="dialog-head"><div><span>LOCAL SHOT LOG</span><h2 id="records-title">镜次记录</h2></div><button type="button" aria-label="关闭镜次记录" onClick={() => setRecordsOpen(false)}>×</button></div>
+            <div className="record-actions"><button type="button" className="secondary-button" onClick={exportRecords}>导出 JSON 备份</button><label className="secondary-button file-button">导入 JSON<input type="file" accept="application/json,.json" onChange={importRecords} /></label></div>
+            <div className="record-list">
+              {records.map((record) => (
+                <article key={record.id}>
+                  <div><small>{new Date(record.updatedAt).toLocaleString("zh-CN")}</small><h3>{record.project} · {record.scene}场 · {record.shot}镜</h3><p>{record.result.fixture}</p><b>{formatPower(record.result.power)} · {record.result.cct}K · 可信度{record.result.confidence}</b></div>
+                  <div><button type="button" onClick={() => loadRecord(record)}>载入</button><button type="button" className="danger" onClick={() => { if (window.confirm("确定删除这条镜次记录吗？")) setRecords(removeShot(record.id)); }}>删除</button></div>
+                </article>
+              ))}
+              {!records.length && <p className="empty-state">还没有保存的镜次记录。</p>}
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   );
 }
 
-function Panel({
-  title,
-  hint,
-  children,
-}: {
-  title: string;
-  hint: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="panel">
-      <div className="panel-head">
-        <h2>{title}</h2>
-        <small>{hint}</small>
-      </div>
-      {children}
-    </section>
-  );
+function Panel({ step, title, hint, children }: { step: string; title: string; hint: string; children: React.ReactNode }) {
+  return <section className="panel"><div className="panel-title"><span>{step}</span><div><h2>{title}</h2><p>{hint}</p></div></div>{children}</section>;
 }
-function OptionRail({
-  label,
-  value,
-  setValue,
-  options,
-  suffix = "",
-  optionLabel,
-}: {
-  label: string;
-  value: number;
-  setValue: (value: number) => void;
-  options: readonly number[];
-  suffix?: string;
-  optionLabel?: (value: number) => string;
-}) {
+
+function PhotoUploader({ id, title, state, onFile, onPosition, onRemove }: { id: string; title: string; state: PhotoState; onFile: (event: ChangeEvent<HTMLInputElement>) => void; onPosition: (position: FacePosition) => void; onRemove: () => void }) {
   return (
-    <section className="option-rail" aria-label={label}>
-      <div className="option-rail-head">
-        <span>{label}</span>
-        <b>{optionLabel ? optionLabel(value) : `${value}${suffix}`}</b>
+    <article className={`photo-card ${state.status}`}>
+      <div className="photo-preview">
+        {state.preview ? (
+          // User-selected local blob URLs are intentionally rendered without remote optimization.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={state.preview} alt={`${title}预览`} />
+        ) : <div><span>＋</span><b>{state.reading ? "已载入分析数据" : `上传${title}`}</b><small>JPG / PNG / WebP / HEIC · 最大16MB</small></div>}
+        {state.status === "analyzing" && <div className="photo-loading">正在分析人物与环境…</div>}
+        <label className="photo-file-label" htmlFor={id}>{state.preview || state.reading ? "更换照片" : "选择照片"}</label>
+        <input id={id} type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" onChange={onFile} />
       </div>
-      <div className="option-rail-options" role="group" aria-label={label}>
-        {options.map((item) => (
-          <button
-            key={item}
-            type="button"
-            className={value === item ? "selected" : ""}
-            aria-pressed={value === item}
-            onClick={() => setValue(item)}
-          >
-            {optionLabel ? optionLabel(item) : `${item}${suffix}`}
-          </button>
-        ))}
+      <div className="photo-meta">
+        <div className="photo-meta-head"><h3>{title}</h3>{(state.preview || state.reading) && <button type="button" onClick={onRemove}>移除</button>}</div>
+        {state.reading && <><dl><div><dt>人物</dt><dd>{state.reading.faceLevel}/100</dd></div><div><dt>环境</dt><dd>{state.reading.environmentLevel}/100</dd></div><div><dt>图像色温</dt><dd>{state.reading.imageKelvin}K</dd></div></dl><label className="position-select"><span>人物位置确认</span><select value={state.position} onChange={(event) => onPosition(event.target.value as FacePosition)}><option value="auto">自动识别</option><option value="left">画面左侧</option><option value="center">画面中央</option><option value="right">画面右侧</option></select></label><p>{state.reading.warning}</p></>}
+        {state.status === "error" && <p className="error-message">{state.error}</p>}
       </div>
-    </section>
-  );
-}
-function ExposureControl({
-  label,
-  value,
-  setValue,
-  options,
-  optionLabel = (item) => String(item),
-  variant = "",
-  inputStep = 1,
-}: {
-  label: string;
-  value: number;
-  setValue: (value: number) => void;
-  options: readonly number[];
-  optionLabel?: (value: number) => string;
-  variant?: string;
-  inputStep?: number;
-}) {
-  return (
-    <section className={`exposure-control ${variant}`}>
-      <div className="exposure-control-head">
-        <span>{label}</span>
-        <b>{optionLabel(value)}</b>
-      </div>
-      <div className="exposure-ticks" role="group" aria-label={label}>
-        {options.map((item) => (
-          <button
-            key={item}
-            type="button"
-            className={value === item ? "selected" : ""}
-            aria-pressed={value === item}
-            onClick={() => setValue(item)}
-          >
-            <i />
-            <span>{optionLabel(item)}</span>
-          </button>
-        ))}
-      </div>
-      <label className="exposure-custom">
-        <span>精确输入</span>
-        <input
-          key={`${label}-${value}`}
-          type="number"
-          defaultValue={value}
-          step={inputStep}
-          inputMode="decimal"
-          aria-label={`${label}精确输入`}
-          onBlur={(event) => {
-            const next = Number(event.target.value);
-            if (Number.isFinite(next)) setValue(next);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") event.currentTarget.blur();
-          }}
-        />
-      </label>
-    </section>
-  );
-}
-function Range({
-  label,
-  value,
-  setValue,
-  min,
-  max,
-  step,
-}: {
-  label: string;
-  value: number;
-  setValue: (value: number) => void;
-  min: number;
-  max: number;
-  step: number;
-}) {
-  return (
-    <label className="range-label">
-      {label}
-      <output>{value}</output>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => setValue(Number(e.target.value))}
-      />
-    </label>
-  );
-}
-function Metric({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: string;
-  hint: string;
-}) {
-  return (
-    <div className="metric">
-      <small>{label}</small>
-      <b>{value}</b>
-      <span>{hint}</span>
-    </div>
+    </article>
   );
 }
 
-function analyzePhoto(file: File): Promise<PhotoReading> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => {
-      const width = 180;
-      const height = Math.max(1, Math.round((image.height / image.width) * width));
-      const canvas = document.createElement("canvas");
-      canvas.width = width; canvas.height = height;
-      const context = canvas.getContext("2d", { willReadFrequently: true });
-      if (!context) return reject(new Error("canvas unavailable"));
-      context.drawImage(image, 0, 0, width, height);
-      const pixels = context.getImageData(0, 0, width, height).data;
-      let faceLuma = 0, faceCount = 0, envLuma = 0, envCount = 0, red = 0, blue = 0;
-      for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
-        const index = (y * width + x) * 4;
-        const luminance = .2126 * pixels[index] + .7152 * pixels[index + 1] + .0722 * pixels[index + 2];
-        const isFaceZone = x > width * .31 && x < width * .69 && y > height * .18 && y < height * .7;
-        if (isFaceZone) { faceLuma += luminance; faceCount += 1; red += pixels[index]; blue += pixels[index + 2]; }
-        else { envLuma += luminance; envCount += 1; }
-      }
-      const kelvin = Math.round(Math.max(2800, Math.min(7500, 5600 + (1 - red / Math.max(1, blue)) * 3300)) / 100) * 100;
-      resolve({ face: Math.round(faceLuma / Math.max(1, faceCount) / 255 * 100), environment: Math.round(envLuma / Math.max(1, envCount) / 255 * 100), kelvin });
-    };
-    image.onerror = () => reject(new Error("image failed"));
-    image.src = URL.createObjectURL(file);
-  });
+function SelectField({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: Array<{ label: string; value: string }> }) {
+  return <label className="field"><span>{label}</span><select value={value} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>;
+}
+
+function NumberField({ label, value, setValue, min, max, step = 1, suffix }: { label: string; value: number; setValue: (value: number) => void; min: number; max: number; step?: number; suffix: string }) {
+  const commit = (input: HTMLInputElement) => {
+    const parsed = Number(input.value);
+    const next = Number.isFinite(parsed) ? clamp(parsed, min, max) : value;
+    input.value = String(next);
+    setValue(next);
+  };
+  return <label className="field number-field"><span>{label}</span><div><input key={value} type="number" inputMode="decimal" defaultValue={value} min={min} max={max} step={step} onChange={(event) => { const raw = event.target.value; const parsed = Number(raw); if (raw !== "" && Number.isFinite(parsed) && parsed >= min && parsed <= max) setValue(parsed); }} onBlur={(event) => commit(event.currentTarget)} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} /><em>{suffix}</em></div></label>;
+}
+
+function RangeField({ label, value, setValue, min, max, step, suffix }: { label: string; value: number; setValue: (value: number) => void; min: number; max: number; step: number; suffix: string }) {
+  return <label className="range-field"><span>{label}</span><output>{value}{suffix}</output><input type="range" min={min} max={max} step={step} value={value} onChange={(event) => setValue(Number(event.target.value))} /></label>;
+}
+
+function ChipField({ label, value, setValue, options, format = String }: { label: string; value: number; setValue: Dispatch<SetStateAction<number>> | ((value: number) => void); options: number[]; format?: (value: number) => string }) {
+  return <fieldset className="chip-field"><legend>{label}</legend><div>{options.map((option) => <button type="button" key={option} className={value === option ? "active" : ""} aria-pressed={value === option} onClick={() => setValue(option)}>{format(option)}</button>)}</div></fieldset>;
 }

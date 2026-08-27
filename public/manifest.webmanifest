@@ -4,11 +4,12 @@
   "description": "影视现场的灯光连续性与照度换算工具。",
   "lang": "zh-CN",
   "start_url": "/",
+  "id": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f2f3ec",
   "theme_color": "#667765",
-  "orientation": "portrait-primary",
+  "categories": ["productivity", "photo", "utilities"],
   "icons": [
     {
       "src": "/app-icon.svg",
