@@ -23,3 +23,25 @@ Thumbs.db
 
 # veFaaS CLI config
 .vefaas/
+
+# Secrets and local-only configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Dependencies, caches, tests and local data
+node_modules/
+data/
+coverage/
+.pytest_cache/
+.next/
+.vinext/
+.wrangler/
+dist/
+dist-vefaas/
+tests/
+outputs/
+work/
+*.tsbuildinfo
