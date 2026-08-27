@@ -1,0 +1,171 @@
+.invite-shell {
+  position: relative;
+  display: grid;
+  min-height: 100svh;
+  place-items: center;
+  overflow: hidden;
+  padding: 32px;
+  color: #f4f0e8;
+  background: #26322c;
+}
+
+.invite-backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(110deg, rgba(24, 34, 29, 0.94), rgba(43, 57, 49, 0.66)),
+    url("/hero-film-still.png") center / cover;
+  transform: scale(1.03);
+}
+
+.invite-backdrop::after {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 78% 24%, rgba(232, 198, 138, 0.2), transparent 30%),
+    linear-gradient(180deg, transparent 54%, rgba(13, 19, 16, 0.5));
+  content: "";
+}
+
+.invite-card {
+  position: relative;
+  width: min(680px, 100%);
+  padding: clamp(28px, 6vw, 64px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 30px;
+  background: rgba(39, 51, 44, 0.78);
+  box-shadow: 0 34px 100px rgba(4, 9, 6, 0.38);
+  backdrop-filter: blur(20px);
+}
+
+.invite-mark {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 15px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 999px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.invite-eyebrow {
+  margin: 32px 0 14px;
+  color: #d7c9aa;
+  font-size: 12px;
+  letter-spacing: 0.17em;
+}
+
+.invite-card h1 {
+  max-width: 570px;
+  margin: 0;
+  font-family: Georgia, "Noto Serif SC", serif;
+  font-size: clamp(36px, 7vw, 66px);
+  font-weight: 400;
+  line-height: 1.08;
+  letter-spacing: -0.05em;
+}
+
+.invite-copy {
+  margin: 20px 0 34px;
+  color: rgba(244, 240, 232, 0.76);
+  font-size: 16px;
+  line-height: 1.8;
+}
+
+.invite-form label {
+  display: block;
+  margin-bottom: 10px;
+  color: rgba(244, 240, 232, 0.74);
+  font-size: 13px;
+}
+
+.invite-input-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+}
+
+.invite-input-row input,
+.invite-input-row button {
+  min-height: 56px;
+  border-radius: 14px;
+  font: inherit;
+}
+
+.invite-input-row input {
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  padding: 0 18px;
+  color: #fff;
+  outline: none;
+  background: rgba(255, 255, 255, 0.09);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.invite-input-row input:focus {
+  border-color: #e6d2a6;
+  box-shadow: 0 0 0 4px rgba(230, 210, 166, 0.12);
+}
+
+.invite-input-row input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.invite-input-row button {
+  border: 0;
+  padding: 0 24px;
+  color: #26322c;
+  background: #f1e4c6;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.invite-input-row button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.invite-error {
+  min-height: 24px;
+  margin: 10px 2px 0;
+  color: #ffcec4;
+  font-size: 13px;
+}
+
+.invite-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(244, 240, 232, 0.55);
+  font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .invite-shell {
+    padding: 16px;
+  }
+
+  .invite-card {
+    border-radius: 24px;
+  }
+
+  .invite-input-row {
+    grid-template-columns: 1fr;
+  }
+
+  .invite-meta {
+    flex-direction: column;
+    gap: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .invite-backdrop {
+    transform: none;
+  }
+}

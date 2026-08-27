@@ -35,7 +35,9 @@ yarn-error.log*
 .vercel
 
 /dist/
+/dist-vefaas/
 /.wrangler/
 /outputs/
 /work/
 *.tsbuildinfo
+.vefaas/

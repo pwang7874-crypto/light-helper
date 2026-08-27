@@ -1,0 +1,221 @@
+.guide-reopen {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 80;
+  min-height: 42px;
+  border: 1px solid rgba(73, 91, 79, 0.26);
+  border-radius: 999px;
+  padding: 0 17px;
+  color: #324238;
+  background: rgba(247, 246, 241, 0.9);
+  box-shadow: 0 10px 32px rgba(36, 48, 40, 0.16);
+  backdrop-filter: blur(14px);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.guide-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(24, 32, 27, 0.68);
+  backdrop-filter: blur(14px);
+}
+
+.guide-dialog {
+  width: min(720px, 100%);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.56);
+  border-radius: 28px;
+  color: #27342c;
+  background: #f7f5ee;
+  box-shadow: 0 38px 120px rgba(9, 16, 12, 0.32);
+}
+
+.guide-header,
+.guide-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.guide-header {
+  padding: 22px 26px 14px;
+}
+
+.guide-header > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.guide-badge {
+  border-radius: 999px;
+  padding: 7px 11px;
+  color: #f4f0e8;
+  background: #586b5d;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.guide-count {
+  color: #849087;
+  font-size: 12px;
+}
+
+.guide-header button {
+  border: 0;
+  padding: 8px;
+  color: #6d776f;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+
+.guide-progress {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  padding: 0 26px;
+}
+
+.guide-progress span {
+  height: 3px;
+  border-radius: 999px;
+  background: #dedfd8;
+}
+
+.guide-progress span.active {
+  background: #6c816f;
+}
+
+.guide-content {
+  padding: clamp(28px, 5vw, 48px) clamp(26px, 6vw, 58px) 34px;
+}
+
+.guide-eyebrow {
+  margin: 0 0 12px;
+  color: #728276;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.guide-content h2 {
+  max-width: 570px;
+  margin: 0;
+  font-family: Georgia, "Noto Serif SC", serif;
+  font-size: clamp(30px, 5.4vw, 48px);
+  font-weight: 400;
+  line-height: 1.17;
+  letter-spacing: -0.045em;
+}
+
+.guide-copy {
+  max-width: 590px;
+  margin: 18px 0 26px;
+  color: #667069;
+  font-size: 15px;
+  line-height: 1.8;
+}
+
+.guide-checklist {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.guide-checklist li {
+  display: flex;
+  min-height: 86px;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid #dfe1da;
+  border-radius: 16px;
+  padding: 15px;
+  color: #4a574e;
+  background: rgba(255, 255, 255, 0.52);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.guide-checklist li span {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: #718476;
+  font-size: 11px;
+}
+
+.guide-actions {
+  padding: 18px 26px 24px;
+  border-top: 1px solid #e3e3dc;
+}
+
+.guide-actions button {
+  min-height: 48px;
+  border-radius: 13px;
+  padding: 0 22px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
+.guide-secondary {
+  border: 1px solid #d3d6cf;
+  color: #4f5c53;
+  background: transparent;
+}
+
+.guide-secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+.guide-primary {
+  border: 0;
+  color: #fff;
+  background: #566c5c;
+}
+
+@media (max-width: 640px) {
+  .guide-overlay {
+    align-items: end;
+    padding: 10px;
+  }
+
+  .guide-dialog {
+    border-radius: 24px;
+  }
+
+  .guide-checklist {
+    grid-template-columns: 1fr;
+  }
+
+  .guide-checklist li {
+    min-height: 0;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+  }
+
+  .guide-reopen {
+    right: 12px;
+    bottom: 12px;
+  }
+}
