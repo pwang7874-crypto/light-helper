@@ -74,7 +74,7 @@ export function loadShots(): SavedShot[] {
   }
 }
 
-const writeShots = (shots: SavedShot[]) => {
+export const persistShots = (shots: SavedShot[]) => {
   window.localStorage.setItem(
     STORAGE_KEY,
     JSON.stringify(shots.slice(0, MAX_RECORDS)),
@@ -84,13 +84,13 @@ const writeShots = (shots: SavedShot[]) => {
 export function saveShot(record: SavedShot) {
   const existing = loadShots().filter((item) => item.id !== record.id);
   const next = [record, ...existing].slice(0, MAX_RECORDS);
-  writeShots(next);
+  persistShots(next);
   return next;
 }
 
 export function removeShot(id: string) {
   const next = loadShots().filter((item) => item.id !== id);
-  writeShots(next);
+  persistShots(next);
   return next;
 }
 
@@ -104,7 +104,7 @@ export function importShots(text: string) {
     (item, index, all) =>
       all.findIndex((candidate) => candidate.id === item.id) === index,
   );
-  writeShots(merged);
+  persistShots(merged);
   return merged.slice(0, MAX_RECORDS);
 }
 
@@ -112,4 +112,3 @@ export const newShotId = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `shot-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-

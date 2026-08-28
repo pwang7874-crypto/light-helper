@@ -1,32 +1,35 @@
-import { type FormEvent, type ReactNode, useState } from "react";
-
-const ACCESS_KEY = "lighting-helper-invite-access-v1";
-const ACCESS_DAYS = 30;
-const INVITE_HASH =
-  "f15a79ed8960ce6a1e03f5248db80908977517800fe8a8701c23d2813aa48828";
-
-const hasAccess = () => {
-  if (typeof window === "undefined") return false;
-  const grantedAt = Number(window.localStorage.getItem(ACCESS_KEY));
-  const maxAge = ACCESS_DAYS * 24 * 60 * 60 * 1000;
-  return Number.isFinite(grantedAt) && Date.now() - grantedAt < maxAge;
-};
-
-const digest = async (value: string) => {
-  const bytes = new TextEncoder().encode(value.trim().toUpperCase());
-  const hash = await window.crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(hash), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
-};
+import { type FormEvent, type ReactNode, useEffect, useState } from "react";
+import {
+  AUTH_EXPIRED_EVENT,
+  loginWithInvite,
+  logoutSession,
+  validateSession,
+} from "../app/cloud-api";
 
 export function InviteGate({ children }: { children: ReactNode }) {
-  const [unlocked, setUnlocked] = useState(hasAccess);
+  const [status, setStatus] = useState<"checking" | "locked" | "unlocked">(
+    "checking",
+  );
+  const [userLabel, setUserLabel] = useState("");
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [checking, setChecking] = useState(false);
 
-  if (unlocked) return children;
+  useEffect(() => {
+    void validateSession()
+      .then((user) => {
+        if (user) {
+          setUserLabel(user.label);
+          setStatus("unlocked");
+        } else {
+          setStatus("locked");
+        }
+      })
+      .catch(() => setStatus("locked"));
+    const expire = () => setStatus("locked");
+    window.addEventListener(AUTH_EXPIRED_EVENT, expire);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, expire);
+  }, []);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -34,18 +37,45 @@ export function InviteGate({ children }: { children: ReactNode }) {
     setError("");
 
     try {
-      if ((await digest(code)) !== INVITE_HASH) {
-        setError("邀请码不正确，请向剧组负责人获取。\n");
-        return;
-      }
-      window.localStorage.setItem(ACCESS_KEY, String(Date.now()));
-      setUnlocked(true);
-    } catch {
-      setError("当前浏览器无法验证邀请码，请升级浏览器后重试。");
+      const user = await loginWithInvite(code.trim());
+      setUserLabel(user.label);
+      setStatus("unlocked");
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "邀请码验证失败，请稍后重试。",
+      );
     } finally {
       setChecking(false);
     }
   };
+
+  if (status === "checking") {
+    return (
+      <main className="invite-shell invite-checking">
+        <div className="invite-backdrop" aria-hidden="true" />
+        <p>正在确认剧组访问权限…</p>
+      </main>
+    );
+  }
+
+  if (status === "unlocked") {
+    return (
+      <>
+        {children}
+        <button
+          className="invite-logout"
+          type="button"
+          onClick={() => {
+            logoutSession();
+            setCode("");
+            setStatus("locked");
+          }}
+        >
+          {userLabel || "剧组用户"} · 退出
+        </button>
+      </>
+    );
+  }
 
   return (
     <main className="invite-shell">
@@ -55,7 +85,7 @@ export function InviteGate({ children }: { children: ReactNode }) {
         <p className="invite-eyebrow">LIGHTING CONTINUITY · 内测访问</p>
         <h1 id="invite-title">让下一镜的光，接得上上一镜。</h1>
         <p className="invite-copy">
-          输入剧组邀请码，进入灯具功率、色温和环境补光计算器。
+          输入专属剧组邀请码，进入灯具功率、色温和环境补光计算器。
         </p>
 
         <form className="invite-form" onSubmit={submit}>
@@ -66,7 +96,7 @@ export function InviteGate({ children }: { children: ReactNode }) {
               name="invite-code"
               value={code}
               onChange={(event) => setCode(event.target.value)}
-              placeholder="例如：BCB2026"
+              placeholder="输入你的专属邀请码"
               autoComplete="one-time-code"
               autoCapitalize="characters"
               spellCheck={false}
@@ -82,7 +112,7 @@ export function InviteGate({ children }: { children: ReactNode }) {
         </form>
 
         <div className="invite-meta">
-          <span>一次验证，本机 30 天内免重复输入</span>
+          <span>安全令牌 7 天有效，到期后重新验证</span>
           <span>照片仅在当前设备分析</span>
         </div>
       </section>

@@ -9,6 +9,31 @@
   background: #26322c;
 }
 
+.invite-checking p {
+  position: relative;
+  color: rgba(244, 240, 232, 0.86);
+  font-size: 15px;
+  letter-spacing: 0.08em;
+}
+
+.invite-logout {
+  position: fixed;
+  right: 18px;
+  bottom: 70px;
+  z-index: 80;
+  min-height: 38px;
+  border: 1px solid rgba(73, 91, 79, 0.22);
+  border-radius: 999px;
+  padding: 0 14px;
+  color: #526259;
+  background: rgba(247, 246, 241, 0.88);
+  box-shadow: 0 8px 26px rgba(36, 48, 40, 0.12);
+  backdrop-filter: blur(14px);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
 .invite-backdrop {
   position: absolute;
   inset: 0;
@@ -161,6 +186,11 @@
   .invite-meta {
     flex-direction: column;
     gap: 8px;
+  }
+
+  .invite-logout {
+    right: 12px;
+    bottom: 62px;
   }
 }
 

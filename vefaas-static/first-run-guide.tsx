@@ -41,7 +41,11 @@ export function FirstRunGuide({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!open) return;
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") finish();
+      if (event.key === "Escape") {
+        window.localStorage.setItem(GUIDE_KEY, "done");
+        setOpen(false);
+        setStep(0);
+      }
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);

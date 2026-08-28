@@ -1,4 +1,4 @@
-const CACHE = "lighting-helper-v3.1";
+const CACHE = "lighting-helper-v4.0-secure-cloud";
 const CORE = ["/", "/manifest.webmanifest", "/app-icon.svg", "/favicon.svg"];
 
 self.addEventListener("install", (event) => {

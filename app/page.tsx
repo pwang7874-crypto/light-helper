@@ -38,6 +38,11 @@ import {
   type CalculatorSnapshot,
   type SavedShot,
 } from "./shot-storage";
+import {
+  deleteCloudShot,
+  saveCloudShot,
+  syncCloudShots,
+} from "./cloud-api";
 
 const DEFAULT_FIXTURE =
   fixtureProfiles.find((fixture) => fixture.model === "VL-120Bi") ??
@@ -171,6 +176,19 @@ export default function Home() {
       if (urls.previous) URL.revokeObjectURL(urls.previous);
       if (urls.current) URL.revokeObjectURL(urls.current);
     };
+  }, []);
+
+  useEffect(() => {
+    const local = loadShots();
+    setRecords(local);
+    void syncCloudShots(local)
+      .then((items) => {
+        setRecords(items);
+        setNotice("镜次记录已与云端同步；照片原图仍只在本机分析。");
+      })
+      .catch(() => {
+        setNotice("云端镜次暂未同步，本机记录仍可正常使用。");
+      });
   }, []);
 
   useEffect(() => {
@@ -514,7 +532,14 @@ export default function Home() {
     };
     try {
       setRecords(saveShot(record));
-      setNotice(`已保存：${record.project} · ${record.scene}场 · ${record.shot}镜。`);
+      setNotice(`已保存：${record.project} · ${record.scene}场 · ${record.shot}镜，正在同步云端。`);
+      void saveCloudShot(record)
+        .then(() => {
+          setNotice(`已保存并同步：${record.project} · ${record.scene}场 · ${record.shot}镜。`);
+        })
+        .catch(() => {
+          setNotice("已保存在本机，但云端同步失败；稍后会再次同步。");
+        });
     } catch {
       setNotice("浏览器未允许本机存储，镜次记录没有保存。");
     }
@@ -605,8 +630,12 @@ export default function Home() {
       return;
     }
     try {
-      setRecords(importShots(await file.text()));
-      setNotice("镜次记录导入成功。");
+      const imported = importShots(await file.text());
+      setRecords(imported);
+      setNotice("镜次记录导入成功，正在同步云端。");
+      void syncCloudShots(imported)
+        .then(setRecords)
+        .catch(() => setNotice("导入已保存在本机，云端同步稍后重试。"));
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "导入失败。");
     }
@@ -633,13 +662,15 @@ export default function Home() {
           别穿帮 <span>灯光助手</span>
         </a>
         <div className="top-actions">
-          <span className="offline-badge">本机分析 · 照片不上传</span>
+          <span className="offline-badge">照片本机分析 · 镜次云端同步</span>
           <button
             type="button"
             className="quiet-button"
             onClick={() => {
-              setRecords(loadShots());
+              const local = loadShots();
+              setRecords(local);
               setRecordsOpen(true);
+              void syncCloudShots(local).then(setRecords).catch(() => undefined);
             }}
           >
             镜次记录
@@ -956,7 +987,7 @@ export default function Home() {
             </div>
           </Panel>
 
-          <Panel step="05" title="保存镜次" hint="记录保存在当前电脑，可导出备份">
+          <Panel step="05" title="保存镜次" hint="按邀请码隔离并同步云端，仍可导出备份">
             <div className="shot-fields">
               <label><span>项目</span><input value={project} onChange={(event) => setProject(event.target.value)} /></label>
               <label><span>场次</span><input value={scene} onChange={(event) => setScene(event.target.value)} /></label>
@@ -994,7 +1025,7 @@ export default function Home() {
       </div>
       </section>
 
-      <footer>别穿帮灯光助手 V3 · 本机照片分析 · 官方数据优先 · 片场最终仍以测光表复核</footer>
+      <footer>别穿帮灯光助手 V3 · 照片本机分析 · 镜次云端隔离 · 片场最终仍以测光表复核</footer>
 
       {recordsOpen && (
         <div className="dialog-layer">
@@ -1005,7 +1036,7 @@ export default function Home() {
               {records.map((record) => (
                 <article key={record.id}>
                   <div><small>{new Date(record.updatedAt).toLocaleString("zh-CN")}</small><h3>{record.project} · {record.scene}场 · {record.shot}镜</h3><p>{record.result.fixture}</p><b>{formatPower(record.result.power)} · {record.result.cct}K · 可信度{record.result.confidence}</b></div>
-                  <div><button type="button" onClick={() => loadRecord(record)}>载入</button><button type="button" className="danger" onClick={() => { if (window.confirm("确定删除这条镜次记录吗？")) setRecords(removeShot(record.id)); }}>删除</button></div>
+                  <div><button type="button" onClick={() => loadRecord(record)}>载入</button><button type="button" className="danger" onClick={() => { if (window.confirm("确定删除这条镜次记录吗？")) { setRecords(removeShot(record.id)); void deleteCloudShot(record.id).catch(() => setNotice("本机记录已删除，云端删除暂时失败。")); } }}>删除</button></div>
                 </article>
               ))}
               {!records.length && <p className="empty-state">还没有保存的镜次记录。</p>}
