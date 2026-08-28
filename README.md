@@ -13,13 +13,15 @@
 ## 火山引擎线上版本
 
 - 访问地址：https://sacu7k14op727e2g3qcik.apigateway-cn-beijing.volceapi.com/
+- GitHub 仓库：https://github.com/pwang7874-crypto/light-helper
 - 使用 10 个独立剧组邀请码；邀请码单独交付，不写入仓库或前端构建产物。
 - 后端签发 7 天有效的安全令牌；首次进入会显示 4 步使用教程，右下角可随时重新打开。
 - 镜次数据按邀请码对应的剧组用户隔离并同步云端；照片原图始终只在当前设备分析，不上传。
 - 前端 veFaaS 应用：`lighting-continuity-helper`；后端应用：`lighting-continuity-backend`。
-- 后端已开启 1 个常驻实例、最大弹性 2，减少冷启动并维持当前 SQLite 临时盘。
+- 后端已开启 1 个常驻实例、最大弹性 2，减少冷启动。
+- 后端已挂载同地域 TOS 存储桶到 `/mnt/tos`，并设置 `BACKUP_DIR=/mnt/tos`；SQLite 会自动备份到 `db_backup/lighting-helper.db`，用于跨发布恢复。
 
-当前仍需在火山引擎控制台为后端挂载同地域 TOS 存储桶，才能完成跨发布的 SQLite 自动备份与恢复。挂载路径约定为 `/mnt/tos`，完成后设置 `BACKUP_DIR=/mnt/tos` 并重新发布后端。未挂载前，请继续使用镜次 JSON 导出作为人工备份。
+线上已完成 TOS 目录读写和真实数据库备份验证。镜次 JSON 导出仍保留为人工备份与跨项目迁移方式。
 
 ## 云端登录与镜次 API
 
